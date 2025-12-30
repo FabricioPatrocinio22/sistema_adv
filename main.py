@@ -1,12 +1,19 @@
 import email
+from ntpath import basename
 import stat
+import shutil
+import os
+import pyotp
+
+from fastapi.responses import FileResponse
+from fastapi import UploadFile, File
 from typing import Optional
 from fastapi import FastAPI, Depends, Header, status
 from sqlmodel import Field, SQLModel, create_engine, Session, select
 from fastapi import HTTPException # Adicione isso aos seus imports
 from security import oauth2_scheme, verificar_token
 from fastapi.security import OAuth2PasswordRequestForm # Adicione este
-import pyotp
+from datetime import date, timedelta # Adicione ao topo
 
 # Importamos nossas próprias criações:
 from models import Processo, Usuario
@@ -43,8 +50,14 @@ def criar_processo(processo: Processo, token: str = Depends(oauth2_scheme)):
                 detail=f"Já existe um processo com este número (ID: {existente.id}).")
 
         usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
-
         processo.usuario_id = usuario.id
+
+        if processo.data_prazo and isinstance(processo.data_prazo, str):
+            try:
+                # Transforma "2025-12-31" em data real
+                processo.data_prazo = date.fromisoformat(str(processo.data_prazo))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Formato de data inválido.")
 
         session.add(processo)
         session.commit()
@@ -92,12 +105,76 @@ def atualizar_processos(processo_id: int, processo_atualizado: Processo, token: 
         session.refresh(db_processo)
         return db_processo
 
+@app.post("/processos/{processo_id}/anexo")
+def anexar_arquivo(
+    processo_id: int,
+    arquivo: UploadFile = File(...),
+    token: str = Depends(oauth2_scheme)
+):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        #Busca o processo
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        processo = session.get(Processo, processo_id)
+
+        if not processo or processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=404, detail="Processo não encontrado ou acesso negado")
+
+        # 2. Cria a pasta 'uploads' se ela não existir
+        pasta_destino = "uploads"
+        if not os.path.exists(pasta_destino):
+            os.makedirs(pasta_destino)
+
+        # 3. Define o nome do arquivo (Ex: processo_1_contrato.pdf)
+        # Usamos o ID para evitar que arquivos com mesmo nome se sobrescrevam
+        nome_arquivo = f"processo_{processo.id}_{arquivo.filename}"
+        caminho_completo = os.path.join(pasta_destino, nome_arquivo)
+
+        # 4. Salva o arquivo no disco
+        with open(caminho_completo, "wb") as buffer:
+            shutil.copyfileobj(arquivo.file, buffer)
+
+        # 5. Salva o caminho no Banco de Dados
+        processo.arquivo_pdf = caminho_completo
+        session.add(processo)
+        session.commit()
+        session.refresh(processo)
+
+        return {"mensagem": "Arquivo enviado com sucesso!", "caminho": caminho_completo}
+
+@app.get("/processos/{processo_id}/download")
+def baixar_arquivo(processo_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+
+        user = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        processo = session.get(Processo, processo_id)
+
+        if not processo:
+            raise HTTPException(status_code=404, detail="Processo não encontrado")
+
+        if processo.usuario_id != user.id:
+            raise HTTPException(status_code=403, detail="Você nao tem permissão para acessar esse arquivo")
+
+        if not processo.arquivo_pdf:
+            raise HTTPException(status_code=404, detail="Este processo não tem arquivos anexados")
+
+        if not os.path.isfile(processo.arquivo_pdf):
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado no servidor (pode ter sido apagado)")
+
+        return FileResponse(
+            path=processo.arquivo_pdf,
+            filename=os.path.basename(processo.arquivo_pdf)
+        )
+
 @app.delete("/processos/{processo_id}")
 def excluir_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
     email_usuario = verificar_token(token)
 
     with Session(engine) as session:
-        usuario = session.exec(select(Usuario).where(Usuario.email == email_usuario))
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_usuario)).first()
         # 1. Busca o processo
         db_processo = session.get(Processo, processo_id)
         
@@ -206,3 +283,24 @@ def confirmar_2fa(codigo: str, token: str = Depends(oauth2_scheme)):
             return {"mensagem": "2FA ativado com sucesso! Seu sistema está protegido."}
         else:
             raise HTTPException(status_code=400, detail="Código 2FA inválido ou expirado")
+
+@app.get("/processos/urgents")
+def listar_prazos_urgentes(token: str = Depends(oauth2_scheme)):
+    email_usuario = verificar_token(token)
+
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_usuario)).first()
+
+        # Define o que é "urgente": de hoje até daqui a 5 dias
+        hoje = date.today()
+        limite_alerta = hoje + timedelta(days=5)
+
+        # Busca processos do usuário que vencem nesse intervalo
+        statement = select(Processo).where(
+            Processo.usuario_id == usuario.id,
+            Processo.data_prazo >= hoje,
+            Processo.data_prazo <= limite_alerta
+        )
+
+        results = session.exec(statement).all()
+        return results

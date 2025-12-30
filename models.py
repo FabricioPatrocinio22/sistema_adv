@@ -1,5 +1,6 @@
 from typing import Optional
 from sqlmodel import Field, SQLModel
+from datetime import date
 
 class Processo(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -8,6 +9,8 @@ class Processo(SQLModel, table=True):
     contra_parte: str
     status: str = "Em Andamento"
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuario.id")
+    data_prazo: Optional[date] = None
+    arquivo_pdf: Optional[str] = None
 
 class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
