@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 from datetime import date
+import os
 
 # Endereço do seu Backend (FastAPI)
 BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")

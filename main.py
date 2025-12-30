@@ -14,6 +14,7 @@ from fastapi import HTTPException # Adicione isso aos seus imports
 from security import oauth2_scheme, verificar_token
 from fastapi.security import OAuth2PasswordRequestForm # Adicione este
 from datetime import date, timedelta # Adicione ao topo
+from fastapi.middleware.cors import CORSMiddleware
 
 # Importamos nossas próprias criações:
 from models import Processo, Usuario
@@ -22,6 +23,13 @@ from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verifi
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Em produção real, trocaríamos "*" pelo link do seu site
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Isso roda quando o servidor liga
 @app.on_event("startup")
 def on_startup():
