@@ -30,20 +30,56 @@ def fazer_login(email, senha, codigo_2fa=None):
 # --- TELA DE LOGIN ---
 if "token" not in st.session_state:
     st.title("⚖️ Acesso Restrito")
-    col1, col2 = st.columns(2)
+
+    tab_login, tab_cadastro = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
+
+    with tab_login:
+        st.subheader("Acesse sua conta")
     
-    email = st.text_input("E-mail")
-    senha = st.text_input("Senha", type="password")
-    codigo_2fa = st.text_input("Código 2FA (Opcional se desativado)")
+        email = st.text_input("E-mail")
+        senha = st.text_input("Senha", type="password")
+        codigo_2fa = st.text_input("Código 2FA (Opcional se desativado)")
     
-    if st.button("Entrar"):
-        dados_token = fazer_login(email, senha, codigo_2fa)
-        if dados_token:
-            st.session_state["token"] = dados_token["access_token"]
-            st.success("Login realizado! Recarregando...")
-            st.rerun()
-        else:
-            st.error("E-mail, senha ou código inválidos.")
+        if st.button("Entrar"):
+            dados_token = fazer_login(email, senha, codigo_2fa)
+            if dados_token:
+                st.session_state["token"] = dados_token["access_token"]
+                st.success("Login realizado! Recarregando...")
+                st.rerun()
+            else:
+                st.error("E-mail, senha ou código inválidos.")
+                
+    with tab_cadastro:
+        st.subheader("Crie seu acesso")
+        with st.form("form_cadastro"):
+            novo_email = st.text_input("E-mail para cadastro")
+            nova_senha = st.text_input("Crie sua senha", type="password")
+            confirmar_senha = st.text_input("Confirme a senha", type="password")
+
+            btn_criar = st.form_submit_button("Criar Conta")
+
+            if btn_criar:
+                if nova_senha != confirmar_senha:
+                    st.warning("As senhas não coincidem!")
+                elif len(nova_senha) < 4:
+                    st.warning("A senha é muito curta.")
+                else:
+                    # Tenta criar
+                    payload = {
+                        "email": novo_email,
+                        "senha": nova_senha
+                    }
+                    try:
+                        res = requests.post(f"{BASE_URL}/usuarios", json=payload)
+                        if res.status_code == 200 or res.status_code == 201:
+                            st.success("Conta criada com sucesso! Vá para a aba 'Entrar' e faça login.")
+                            st.balloons() # Efeito de festa 🎉
+                        elif res.status_code == 400:
+                            st.error("Erro: Este e-mail já está cadastrado.")
+                        else:
+                            st.error(f"Erro no servidor: {res.text}")
+                    except Exception as e:
+                        st.error(f"Erro de conexão: {e}")
 
 # --- SISTEMA PRINCIPAL (SÓ APARECE SE LOGADO) ---
 else:
