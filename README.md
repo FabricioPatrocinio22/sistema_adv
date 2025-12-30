@@ -22,7 +22,7 @@ Sistema de gerenciamento de processos jurídicos desenvolvido com FastAPI.
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/seu-usuario/sistema_advogado.git
+git clone https://github.com/SEU_USUARIO/sistema_advogado.git
 cd sistema_advogado
 ```
 

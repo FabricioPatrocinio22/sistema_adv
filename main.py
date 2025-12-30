@@ -1,5 +1,7 @@
+import email
+import stat
 from typing import Optional
-from fastapi import FastAPI, Depends, Header
+from fastapi import FastAPI, Depends, Header, status
 from sqlmodel import Field, SQLModel, create_engine, Session, select
 from fastapi import HTTPException # Adicione isso aos seus imports
 from security import oauth2_scheme, verificar_token
@@ -23,7 +25,12 @@ def home():
     return {"mensagem": "Sistema conectado ao Banco de Dados!"}
 
 @app.post("/processos")
-def criar_processo(processo: Processo):
+def criar_processo(processo: Processo, token: str = Depends(oauth2_scheme)):
+
+    email_user = verificar_token(token)
+    if not email_user:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
     with Session(engine) as session:
         # 1. Verificar se o número já existe
         instrucao = select(Processo).where(Processo.numero == processo.numero)
@@ -34,6 +41,10 @@ def criar_processo(processo: Processo):
             raise HTTPException(
                 status_code=400, 
                 detail=f"Já existe um processo com este número (ID: {existente.id}).")
+
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        processo.usuario_id = usuario.id
 
         session.add(processo)
         session.commit()
@@ -48,21 +59,33 @@ def listar_processos(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
 
     with Session(engine) as session:
-        instrucao = select(Processo)
+        usuario = session.exec(select(Usuario).where(Usuario.email == email)).first()
+
+        instrucao = select(Processo).where(Processo.usuario_id == usuario.id)
         resultados = session.exec(instrucao).all()
         return resultados
 
 @app.put("/processos/{processo_id}")
-def atualizar_processos(processo_id: int, processo_atualizado: Processo):
+def atualizar_processos(processo_id: int, processo_atualizado: Processo, token: str = Depends(oauth2_scheme)):
+    email_usuario = verificar_token(token)
+
     with Session(engine) as session:
+        # 1. Identifica quem está logado
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_usuario)).first()
+
+        # 2. Busca o processo pelo ID
         db_processo = session.get(Processo, processo_id)
 
         if not db_processo:
             return {"erro": "Processo não encontrado"}
 
-        dados_novos = processo_atualizado.dict(exclude_unset = True)
-        for chave, valor in dados_novos.items():
-            setattr(db_processo, chave, valor)
+        # 3. TRAVA DE SEGURANÇA: O processo pertence a quem está logado?
+        if db_processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Você não tem permissao para alterar este processo")
+
+        # 4. Se passou, atualiza os dados
+        dados_novos = processo_atualizado.model_dump(exclude_unset = True)
+        db_processo.sqlmodel_update(dados_novos)
         
         session.add(db_processo)
         session.commit()
@@ -70,13 +93,20 @@ def atualizar_processos(processo_id: int, processo_atualizado: Processo):
         return db_processo
 
 @app.delete("/processos/{processo_id}")
-def excluir_processo(processo_id: int):
+def excluir_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
+    email_usuario = verificar_token(token)
+
     with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_usuario))
         # 1. Busca o processo
         db_processo = session.get(Processo, processo_id)
         
         if not db_processo:
             return {"erro": "Processo não encontrado"}
+
+        # Verifica se o dono é o mesmo
+        if db_processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=404, detail="Permissão negada")
 
         # 2. Deleta e confirma
         session.delete(db_processo)
@@ -116,31 +146,21 @@ def cadastrar_usuario(usuario_data: Usuario):
 @app.post("/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    x_otp: Optional[str] = Header(None)    
+    otp: Optional[str] = None 
 ):
     with Session(engine) as session:
+        usuario_db = session.exec(select(Usuario).where(Usuario.email == form_data.username)).first()
 
-        statement = select(Usuario).where(Usuario.email == form_data.username)
-        usuario_db = session.exec(statement).first()
-
-        #válida senha e login
         if not usuario_db or not verificar_senha(form_data.password, usuario_db.senha_hash):
             raise HTTPException(status_code=401, detail="E-mail ou senha incorretos")
 
-        #válida se o 2FA ta ativo e pede codigo
-        if usuario_db.is_2fa_enabled:
-            if not x_otp:
-                raise HTTPException(
-                    status_code=403,
-                    detail="2FA_REQUIRED"
-                )
-
-            if not verificar_codigo_2fa(usuario_db.secret_2fa, x_otp):
+        # LOGICA DE TESTE: Só valida o 2FA se você enviar o OTP. 
+        # Se não enviar, ele loga direto (facilitando o uso do cadeado do Swagger)
+        if usuario_db.is_2fa_enabled and otp:
+            if not verificar_codigo_2fa(usuario_db.secret_2fa, otp):
                 raise HTTPException(status_code=401, detail="Código 2FA Inválido")
 
-        #Se passou por tudo, gera o token
         token = criar_token_acesso(dados={"sub": usuario_db.email})
-
         return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/usuarios/ativar-2fa")
