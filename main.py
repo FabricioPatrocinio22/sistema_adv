@@ -17,7 +17,7 @@ from datetime import date, timedelta # Adicione ao topo
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importamos nossas próprias criações:
-from models import Processo, Usuario
+from models import Processo, Usuario, UsuarioCreate
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
 
@@ -200,11 +200,11 @@ def excluir_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
         return {"mensagem": f"Processo {processo_id} excluído com sucesso"}
 
 @app.post("/usuarios")
-def cadastrar_usuario(usuario_data: Usuario):
+def cadastrar_usuario(usuario_data: UsuarioCreate):
     with Session(engine) as session:
 
-        print(f"DEBUG: Senha recebida: {usuario_data.senha_hash}") # Adicione esta linha
-        print(f"DEBUG: Tamanho da senha: {len(usuario_data.senha_hash)}") # E esta
+        print(f"DEBUG: Senha recebida: {usuario_data.senha}") # Adicione esta linha
+        print(f"DEBUG: Tamanho da senha: {len(usuario_data.email)}") # E esta
         # 1. Verificar se o e-mail já existe
         statement = select(Usuario).where(Usuario.email == usuario_data.email)
         usuario_existente = session.exec(statement).first()
@@ -216,17 +216,20 @@ def cadastrar_usuario(usuario_data: Usuario):
             )
 
         # 2. Gerar o hash da senha (nunca salvamos a senha pura!)
-        senha_criptografada = gerar_hash_senha(usuario_data.senha_hash)
+        senha_criptografada = gerar_hash_senha(usuario_data.senha)
 
         # 3. Substituir a senha original pelo hash antes de salvar
-        usuario_data.senha_hash = senha_criptografada
+        novo_usuario = Usuario(
+            email = usuario_data.email,
+            senha_hash=senha_criptografada
+        )
 
         # 4. Salvar no banco
-        session.add(usuario_data)
+        session.add(novo_usuario)
         session.commit()
-        session.refresh(usuario_data)
+        session.refresh(novo_usuario)
 
-        return {"mensagem": "Usuario criado com sucesso", "id": usuario_data.id}
+        return {"email": novo_usuario.email, "mensagem": "Usuario criado com sucesso"}
 
 @app.post("/login")
 def login(
