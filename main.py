@@ -1,10 +1,15 @@
 import email
-from ntpath import basename
 import stat
 import shutil
 import os
 import pyotp
+import pyotp
+import qrcode
+import io
+import base64
 
+from ntpath import basename
+from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 from fastapi import UploadFile, File
 from typing import Optional
@@ -40,6 +45,36 @@ def on_startup():
 @app.get("/")
 def home():
     return {"mensagem": "Sistema conectado ao Banco de Dados!"}
+
+@app.post("/2fa/setup")
+def setup_2fa(token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        # 1. Gera um segredo aleatório se ele não tiver
+        if not usuario.totp_secret:
+            usuario.totp_secret = pyotp.random_base32()
+            session.add(usuario)
+            session.commit()
+            session.refresh(usuario)
+
+        # 2. Cria a URL do QR Code (padrão do Google Authenticator)
+        uri_otp = pyotp.totp.TOTP(usuario.totp_secret).provisioning_uri(
+            name=usuario.email, 
+            issuer_name="Advocacia SaaS"
+        )
+
+        # 3. Transforma em Imagem
+        img = qrcode.make(uri_otp)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        # Retorna a imagem em Base64 para o Frontend mostrar fácil
+        img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return {"qr_code_b64": img_b64, "segredo": usuario.totp_secret}
 
 @app.post("/processos")
 def criar_processo(processo: Processo, token: str = Depends(oauth2_scheme)):
@@ -233,23 +268,34 @@ def cadastrar_usuario(usuario_data: UsuarioCreate):
 
         return {"email": novo_usuario.email, "mensagem": "Usuario criado com sucesso"}
 
-@app.post("/login")
-def login(
+# --- Substitua a rota antiga /login por esta /token ---
+@app.post("/token")
+def login_para_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    otp: Optional[str] = None 
+    codigo_2fa: Optional[str] = Header(default=None, alias="codigo_2fa") # Pega o código do cabeçalho enviado pelo Frontend
 ):
     with Session(engine) as session:
+        # 1. Busca o usuário pelo e-mail
         usuario_db = session.exec(select(Usuario).where(Usuario.email == form_data.username)).first()
 
+        # 2. Verifica se existe e se a senha bate
         if not usuario_db or not verificar_senha(form_data.password, usuario_db.senha_hash):
             raise HTTPException(status_code=401, detail="E-mail ou senha incorretos")
 
-        # LOGICA DE TESTE: Só valida o 2FA se você enviar o OTP. 
-        # Se não enviar, ele loga direto (facilitando o uso do cadeado do Swagger)
-        if usuario_db.is_2fa_enabled and otp:
-            if not verificar_codigo_2fa(usuario_db.secret_2fa, otp):
-                raise HTTPException(status_code=401, detail="Código 2FA Inválido")
+        # 3. LÓGICA DO 2FA (A Blindagem)
+        # Verifica se o usuário tem o segredo no banco (ou seja, ativou o 2FA)
+        if usuario_db.totp_secret:
+            
+            # Se tem 2FA ativado, o código é OBRIGATÓRIO
+            if not codigo_2fa:
+                raise HTTPException(status_code=401, detail="Código 2FA obrigatório para este usuário.")
+            
+            # Valida o código matemático usando a biblioteca pyotp
+            totp = pyotp.TOTP(usuario_db.totp_secret)
+            if not totp.verify(codigo_2fa):
+                raise HTTPException(status_code=401, detail="Código 2FA inválido ou expirado.")
 
+        # 4. Se passou por tudo, gera o token de acesso
         token = criar_token_acesso(dados={"sub": usuario_db.email})
         return {"access_token": token, "token_type": "bearer"}
 

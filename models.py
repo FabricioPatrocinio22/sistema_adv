@@ -24,3 +24,4 @@ class Usuario(SQLModel, table=True):
     senha_hash: str
     secret_2fa: Optional[str] = None  # Para o Google Authenticator (TOTP)
     is_2fa_enabled: bool = False      # Controle de ativação
+    totp_secret: Optional[str] = None

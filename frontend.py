@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 from datetime import date
 import os
+import base64
 
 # Endereço do seu Backend (FastAPI)
 BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
@@ -11,20 +12,24 @@ st.set_page_config(page_title="Sistema Jurídico", page_icon="⚖️")
 
 # --- FUNÇÕES AUXILIARES ---
 def fazer_login(email, senha, codigo_2fa=None):
-    # O FastAPI espera um formulário (data), não JSON
-    payload = {"username": email, "password": senha}
-    params = {}
-    if codigo_2fa:
-        params = {"otp": codigo_2fa}
-    
     try:
-        response = requests.post(f"{BASE_URL}/login", data=payload, params=params)
+        # O FastAPI (OAuth2) exige que os campos se chamem 'username' e 'password'
+        dados = {"username": email, "password": senha}
+        
+        headers_login = {}
+        # Se o usuário digitou algo no campo 2FA, enviamos no cabeçalho
+        if codigo_2fa:
+            headers_login["codigo_2fa"] = codigo_2fa
+
+        # ATENÇÃO: A rota mudou de /login para /token
+        response = requests.post(f"{BASE_URL}/token", data=dados, headers=headers_login)
+        
         if response.status_code == 200:
             return response.json()
         else:
             return None
-    except:
-        st.error("Erro ao conectar com o servidor. O Backend está ligado?")
+    except Exception as e:
+        st.error(f"Erro de conexão: {e}")
         return None
 
 # --- TELA DE LOGIN ---
@@ -88,7 +93,7 @@ else:
     
     # Barra Lateral (Menu)
     st.sidebar.title("Menu Advogado")
-    opcao = st.sidebar.radio("Ir para:", ["Dashboard", "Novo Processo", "Meus Processos"])
+    opcao = st.sidebar.radio("Ir para:", ["Dashboard", "Novo Processo", "Meus Processos", "Configurações"])
     
     if st.sidebar.button("Sair"):
         del st.session_state["token"]
@@ -181,6 +186,7 @@ else:
 
     # --- TELA 3: MEUS PROCESSOS E UPLOAD ---
     elif opcao == "Meus Processos":
+
         st.header("📂 Gestão de Processos")
         
         # Lista todos os processos
@@ -294,3 +300,24 @@ else:
                                     st.error(f"Erro ao analisar: {res_ia.text}")
                             except Exception as e:
                                 st.error("Erro de conexão com o backend.")
+    
+    elif opcao == "Configurações":
+        st.header("⚙️ Configurações da Conta")
+
+        st.subheader("🔐 Autenticação de Dois Fatores (2FA)")
+        st.write("Aumente a segurança da sua conta exigindo um código do celular.")
+
+        if st.button("Ativar/Ver meu QR Code 2FA"):
+            res = requests.post(f"{BASE_URL}/2fa/setup", headers=headers)
+
+            if res.status_code == 200:
+                dados_2fa = res.json()
+                b64_img = dados_2fa["qr_code_b64"]
+                segredo = dados_2fa["segredo"]
+                
+                # Exibe o QR Code decodificando o Base64
+                st.image(base64.b64decode(b64_img), caption="Escaneie com Google Authenticator")
+                st.info(f"Se não conseguir ler, digite este código no app: {segredo}")
+                st.success("2FA Configurado! No próximo login, o código será exigido.")
+            else:
+                st.error("Erro ao gerar QR Code.")
