@@ -1,6 +1,7 @@
 from typing import Optional
 from sqlmodel import Field, SQLModel
 from datetime import date
+from sqlalchemy import Text
 
 class UsuarioCreate(SQLModel):
     email: str
@@ -15,6 +16,7 @@ class Processo(SQLModel, table=True):
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuario.id")
     data_prazo: Optional[date] = None
     arquivo_pdf: Optional[str] = None
+    resumo_ia: Optional[str] = Field(default=None, sa_type=Text)
 
 class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

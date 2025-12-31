@@ -16,7 +16,9 @@ from fastapi.security import OAuth2PasswordRequestForm # Adicione este
 from datetime import date, timedelta # Adicione ao topo
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # Importamos nossas próprias criações:
+from ia import analisar_documento
 from models import Processo, Usuario, UsuarioCreate
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
@@ -315,3 +317,27 @@ def listar_prazos_urgentes(token: str = Depends(oauth2_scheme)):
 
         results = session.exec(statement).all()
         return results
+
+@app.post("/processos/{processo_id}/analise-ia")
+def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        #Busca o processo
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        processo = session.get(Processo, processo_id)
+
+        if not processo or processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=404, detail="Processo não encontrado")
+
+        if not processo.arquivo_pdf:
+             raise HTTPException(status_code=400, detail="Este processo não tem PDF para ler.")
+
+        resumo = analisar_documento(processo.arquivo_pdf)
+
+        # 3. Salva o resultado no banco
+        processo.resumo_ia = resumo
+        session.add(processo)
+        session.commit()
+
+        return {"mensagem": "Análise concluída!", "resumo": resumo}
