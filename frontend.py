@@ -97,18 +97,61 @@ else:
     # --- TELA 1: DASHBOARD ---
     if opcao == "Dashboard":
         st.header("📊 Visão Geral")
+        st.markdown("Visão geral estratégica do seu escritório.")
         
-        # Chama a rota de urgentes
-        res = requests.get(f"{BASE_URL}/dashboard/prazos-urgentes", headers=headers)
-        if res.status_code == 200:
-            dados = res.json()
-            st.metric("Prazos Urgentes (7 dias)", dados["total_urgentes"])
-            
-            if dados["processos"]:
-                st.warning("⚠️ Atenção aos seguintes processos:")
-                st.table(dados["processos"])
+        try:
+            res = requests.get(f"{BASE_URL}/dashboard/geral", headers=headers)
+
+            if res.status_code == 200:
+                dados = res.json()
+
+                #--- LINHA 1: KPIs (Indicadores Chave) ---
+                col1, col2, col3, col4 = st.columns(4)
+
+                col1.metric("Total de Processos", dados["total"])
+                col2.metric("Ativos", dados["ativos"])
+                col3.metric("Concluídos", dados["concluidos"])
+
+                # Destaque vermelho para vencidos
+                col4.metric("⚠️ Prazos Vencidos", dados["vencidos"], delta_color="inverse")
+
+                st.divider()
+
+                # --- LINHA 2: GRÁFICOS E PRAZOS ---
+                col_grafico, col_prazos = st.columns([1, 2])
+
+                with col_grafico:
+                    st.subheader("Status dos Processos")
+                    # Gráfico simples de barras
+                    st.bar_chart(dados["grafico_status"])
+
+                with col_prazos:
+                    st.subheader("📅 Próximos Prazos (30 dias)")
+
+                    lista_prazos = dados["proximos_prazos"]
+
+                    if lista_prazos:
+
+                        for p in lista_prazos:
+                            dias = p["dias_restantes"]
+
+                            # Define a cor do alerta baseada nos dias
+                            cor_alerta = "🔴" if dias <= 5 else "🟡" if dias <= 15 else "🟢"
+                            msg_dias = "HOJE!" if dias == 0 else f"em {dias} dias"
+
+                            with st.container(border=True):
+                                col_a, col_b = st.columns([3, 1])
+                                col_a.markdown(f"**{cor_alerta} Processo {p['numero']}**")
+                                col_a.caption(f"Cliente: {p['cliente']}")
+                                col_b.write(f"**{msg_dias}**")
+                                col_b.caption(f"{p['data']}")
+                    else:
+                        st.success("Tudo tranquilo! Nenhum prazo crítico para os próximos 30 dias.")
+
             else:
-                st.success("Nenhum prazo urgente à vista! 🎉")
+                st.error("Erro ao carregar dados do dashboard.")
+        except Exception as e:
+            st.error(f"Erro de conexão: {e}")
 
     # --- TELA 2: NOVO PROCESSO ---
     elif opcao == "Novo Processo":

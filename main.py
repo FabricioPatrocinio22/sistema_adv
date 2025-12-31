@@ -341,3 +341,55 @@ def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
         session.commit()
 
         return {"mensagem": "Análise concluída!", "resumo": resumo}
+
+@app.get("/dashboard/geral")
+def dados_dashboard(token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        processos = session.exec(select(Processo).where(Processo.usuario_id == usuario.id)).all()
+
+        total_processos = len(processos)
+        ativos = sum(1 for p in processos if p.status == "Em Andamento")
+        concluidos = sum(1 for p in processos if p.status == "Concluído")
+
+        # 2. Prazos Urgentes (Próximos 30 dias)
+        hoje = date.today()
+        limite_urgencia = hoje + timedelta(days=30)
+
+        prazos_lista = []
+        prazos_vencidos = 0
+
+        for p in processos:
+            if p.data_prazo:
+                # Conta Vencidos
+                if p.data_prazo < hoje and p.status != "Concluído":
+                    prazos_vencidos += 1
+                
+                # Lista os próximos urgentes
+                elif hoje <= p.data_prazo <= limite_urgencia and p.status != "Concluído":
+                    dias_restantes = (p.data_prazo - hoje).days
+                    prazos_lista.append({
+                        "numero": p.numero,
+                        "cliente": p.cliente,
+                        "data": p.data_prazo,
+                        "dias_restantes": dias_restantes
+                    })
+        
+        # Ordena os prazos do mais perto para o mais longe
+        prazos_lista.sort(key=lambda x: x["dias_restantes"])
+
+        # 3. Distribuição por Status (Para o Gráfico)
+        status_distribuicao = {}
+        for p in processos:
+            status_distribuicao[p.status] = status_distribuicao.get(p.status, 0) + 1
+
+        return {
+            "total": total_processos,
+            "ativos": ativos,
+            "concluidos": concluidos,
+            "vencidos": prazos_vencidos,
+            "proximos_prazos": prazos_lista,
+            "grafico_status": status_distribuicao
+        }
