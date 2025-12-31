@@ -221,3 +221,33 @@ else:
                                     st.rerun()
                                 else:
                                     st.error("Erro ao atualizar.")
+
+                    st.divider()
+                    st.write("🧠 **Inteligência Artificial**")
+
+                    # 1. Se o banco já tem um resumo salvo, mostra ele na tela
+                    if p.get("resumo_ia"):
+                        st.info(f"**Análise da IA:**\n\n{p['resumo_ia']}")
+
+                    # 2. Botão para pedir uma nova análise
+                    # O key=f"..." é obrigatório para não confundir os botões de processos diferentes
+                    if st.button("🤖 Analisar Documento com IA", key=f"btn_ia_{p['id']}"):
+
+                        # Mostra um "carregando" enquanto a IA pensa
+                        with st.spinner("Lendo o PDF e consultando o Gemini..."):
+                            try:
+
+                                res_ia = requests.post(
+                                    f"{BASE_URL}/processos/{p['id']}/analise-ia", 
+                                    headers=headers
+                                )
+                                
+                                if res_ia.status_code == 200:
+                                    st.success("Análise Concluída!")
+                                    st.rerun() # Recarrega a página para o resumo aparecer
+                                elif res_ia.status_code == 400:
+                                    st.warning("⚠️ Este processo precisa de um PDF anexado antes.")
+                                else:
+                                    st.error(f"Erro ao analisar: {res_ia.text}")
+                            except Exception as e:
+                                st.error("Erro de conexão com o backend.")
