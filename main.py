@@ -11,6 +11,7 @@ import json
 from google import genai
 
 from ntpath import basename
+from fastapi import Body
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 from fastapi import UploadFile, File
@@ -501,3 +502,69 @@ async def extrair_dados_pdf(arquivo: UploadFile = File(...)):
     except Exception as e:
         print(f"Erro na extração: {e}")
         raise HTTPException(status_code=500, detail="Não foi possível extrair dados do PDF.")
+
+@app.post("/processos/{processo_id}/chat")
+def chat_com_processo(
+    processo_id: int,
+    dados: dict = (Body(...)),
+    token: str = Depends(oauth2_scheme)
+):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        # 1. Busca usuário e processo
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        processo = session.get(Processo, processo_id)
+
+        # 2. Validações de Segurança
+        if not processo:
+            raise HTTPException(status_code=404, detail="Processo não encontrado")
+        
+        if processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Você não tem permissão para acessar este processo.")
+        
+        if not processo.arquivo_pdf:
+            raise HTTPException(status_code=400, detail="Este processo não tem PDF anexado para ler.")
+
+        if not os.path.exists(processo.arquivo_pdf):
+            raise HTTPException(status_code=404, detail="Arquivo físico não encontrado no servidor.")
+
+        texto_pdf = ''
+        try:
+            with open(processo.arquivo_pdf, 'rb') as f:
+                pdf_reader = PdfReader(f)
+
+                for i, page in enumerate(pdf_reader.pages):
+                    if i > 20: break
+                    texto_pdf += page.extract_text()
+        except Exception as e:
+            print(f"Erro ao ler PDF: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao ler o arquivo PDF.")
+        
+        pergunta_usuario = dados.get("pergunta")
+
+        prompt_sistema = f"""
+        Você é um assistente jurídico sênior e experiente.
+        Responda à pergunta do usuário baseando-se EXCLUSIVAMENTE no conteúdo do processo fornecido abaixo.
+        Se a informação não estiver no texto, diga que não encontrou.
+
+        --- TEXTO DO PROCESSO ---
+        {texto_pdf}
+        --- FIM DO TEXTO ---
+
+        Pergunta do Advogado: {pergunta_usuario}
+        """
+
+        try:
+            # 5. Chama o Gemini (Usando a biblioteca nova 'google.genai' que você já configurou)
+            client = genai.Client(api_key=chave_secreta)
+            
+            response = client.models.generate_content(
+                model="models/gemini-3-flash-preview", # Use o modelo mais recente disponível
+                contents=prompt_sistema
+            )
+            
+            return {"resposta": response.text}
+        except Exception as e:
+            print(f"Erro na IA: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao processar resposta da IA.")

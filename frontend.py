@@ -250,121 +250,126 @@ else:
 
     # --- TELA 3: MEUS PROCESSOS E UPLOAD ---
     elif opcao == "Meus Processos":
+            st.header("📂 Gestão e Análise")
 
-        st.header("📂 Gestão de Processos")
-        
-        # Lista todos os processos
-        res = requests.get(f"{BASE_URL}/processos", headers=headers)
-        if res.status_code == 200:
-            processos = res.json()
-            
+            # Inicializa histórico de Chat
+            if "chat_history" not in st.session_state:
+                st.session_state["chat_history"] = {}
+
+            try:
+                res = requests.get(f"{BASE_URL}/processos", headers=headers)
+                processos = res.json() if res.status_code == 200 else []
+            except:
+                processos = []
+                st.error("Erro ao conectar.")
+
             for p in processos:
-                with st.expander(f"Processo: {p['numero']} - {p['cliente']}"):
-                    st.write(f"**Contra-parte:** {p['contra_parte']}")
-                    st.write(f"**Prazo:** {p['data_prazo']}")
-                    st.write(f"**Status:** {p['status']}")
-                    
-                    # Se já tiver arquivo
-                    if p.get("arquivo_pdf"):
-                        st.info("✅ Este processo já tem anexo.")
-                        # Aqui poderíamos botar o botão de download
-                        link_download = f"{BASE_URL}/processos/{p['id']}/download"
-                        st.markdown(f"[📥 Baixar Arquivo Atual]({link_download})")
-                    
-                    # Área de Upload
-                    st.divider()
-                    st.write("📤 **Anexar Documento**")
-                    arquivo = st.file_uploader("Escolha um PDF", key=f"uploader_{p['id']}")
-                    
-                    if arquivo and st.button("Enviar Arquivo", key=f"btn_{p['id']}"):
-                        files = {"arquivo": arquivo}
-                        res_upload = requests.post(
-                            f"{BASE_URL}/processos/{p['id']}/anexo", 
-                            headers=headers, 
-                            files=files
-                        )
-                        if res_upload.status_code == 200:
-                            st.success("Arquivo enviado!")
-                            st.rerun()
-                        else:
-                            st.error("Erro no envio.")
+                # Container visual para o processo
+                with st.container(border=True):
+                    # Cabeçalho do Card
+                    c_top1, c_top2 = st.columns([3, 1])
+                    c_top1.subheader(f"{p['numero']} - {p['cliente']}")
+                    status_color = "red" if p['status'] == "Suspenso" else "green"
+                    c_top2.markdown(f"Status: :{status_color}[{p['status']}]")
 
-                    #delete button
-                    st.divider()
-                    col_del1, col_del2 = st.columns([3, 1])
-                    with col_del2:
+                    # --- SISTEMA DE ABAS ---
+                    tab_detalhes, tab_chat = st.tabs(["📄 Detalhes & Arquivos", "💬 Chat Jurídico (IA)"])
+
+                    # ABA 1: DETALHES (O que já existia + Upload + Edição)
+                    with tab_detalhes:
+                        c1, c2 = st.columns(2)
+                        c1.write(f"**Contra-parte:** {p['contra_parte']}")
+                        c2.write(f"**Prazo:** {p['data_prazo']}")
                         
-                        if st.button("🗑️ Excluir Processo", key=f"del_{p['id']}", type="primary"):
-                            res_del = requests.delete(f"{BASE_URL}/processos/{p['id']}", headers=headers)
-                            if res_del.status_code == 200:
-                                st.success("Processo apagado!")
-                                st.rerun() # Recarrega a tela para sumir da lista
-                            else:
-                                st.error("Erro ao excluir.")
-
-                    st.divider()
-                    st.write("✏️ **Editar Dados**")
-
-                    if st.checkbox("Alterar dados deste processo", key=f"check_edit_{p['id']}"):
-                        with st.form(key=f"form_edit_{p['id']}"):
-
-                            novo_numero = st.text_input("Número", value=p['numero'])
-                            novo_cliente = st.text_input("Cliente", value=p['cliente'])
-                            nova_parte = st.text_input("Contra-parte", value=p['contra_parte'])
-                            novo_status = st.selectbox("Status", ["Em Andamento", "Concluido", "Suspenso"], index=0)
-
-                            btn_salvar = st.form_submit_button("Salvar Alterações")
-
-                            if btn_salvar:
-                                payload_edit = {
-                                    "numero": novo_numero,
-                                    "cliente": novo_cliente,
-                                    "contra_parte": nova_parte,
-                                    "status": novo_status
-                                }
-
-                                res_edit = requests.put(
-                                    f"{BASE_URL}/processos/{p['id']}",
-                                    json=payload_edit,
-                                    headers=headers
-                                )
-
-                                if res_edit.status_code == 200:
-                                    st.success("Dados atualizados!")
+                        st.divider()
+                        
+                        # Colunas de Ação
+                        col_up, col_edit, col_del = st.columns([2, 2, 1])
+                        
+                        # Upload
+                        with col_up:
+                            if not p.get("arquivo_pdf"):
+                                arq = st.file_uploader("Anexar PDF", key=f"up_{p['id']}", label_visibility="collapsed")
+                                if arq and st.button("Enviar PDF", key=f"btn_up_{p['id']}"):
+                                    files = {"arquivo": arq}
+                                    requests.post(f"{BASE_URL}/processos/{p['id']}/anexo", headers=headers, files=files)
+                                    st.success("Enviado!")
                                     st.rerun()
-                                else:
-                                    st.error("Erro ao atualizar.")
+                            else:
+                                st.success("✅ PDF Anexado")
+                                link = f"{BASE_URL}/processos/{p['id']}/download"
+                                st.markdown(f"[📥 Baixar Documento]({link})")
 
-                    st.divider()
-                    st.write("🧠 **Inteligência Artificial**")
+                        # Edição Rápida
+                        with col_edit:
+                            with st.popover("✏️ Editar Dados"):
+                                with st.form(key=f"edit_{p['id']}"):
+                                    n_status = st.selectbox("Status", ["Em Andamento", "Concluído", "Suspenso"])
+                                    if st.form_submit_button("Salvar"):
+                                        requests.put(f"{BASE_URL}/processos/{p['id']}", json={"status": n_status}, headers=headers)
+                                        st.rerun()
+                        
+                        # Excluir
+                        with col_del:
+                            if st.button("🗑️", key=f"del_{p['id']}", help="Excluir Processo"):
+                                requests.delete(f"{BASE_URL}/processos/{p['id']}", headers=headers)
+                                st.rerun()
 
-                    # 1. Se o banco já tem um resumo salvo, mostra ele na tela
-                    if p.get("resumo_ia"):
-                        st.info(f"**Análise da IA:**\n\n{p['resumo_ia']}")
+                    # ABA 2: CHAT COM IA
+                    with tab_chat:
+                        if not p.get("arquivo_pdf"):
+                            st.warning("⚠️ Você precisa anexar um PDF na aba 'Detalhes' para usar o chat.")
+                        else:
+                            # --- NOVIDADE AQUI: Cabeçalho com Botão de Limpar ---
+                            col_titulo_chat, col_btn_limpar = st.columns([4, 1])
 
-                    # 2. Botão para pedir uma nova análise
-                    # O key=f"..." é obrigatório para não confundir os botões de processos diferentes
-                    if st.button("🤖 Analisar Documento com IA", key=f"btn_ia_{p['id']}"):
+                            with col_titulo_chat:
+                                st.markdown("##### 🤖 Pergunte sobre este processo")
+                            
+                            # ID único para o histórico deste processo
+                            chat_id = p['id']
+                            if chat_id not in st.session_state["chat_history"]:
+                                st.session_state["chat_history"][chat_id] = []
 
-                        # Mostra um "carregando" enquanto a IA pensa
-                        with st.spinner("Lendo o PDF e consultando o Gemini..."):
-                            try:
+                            with col_btn_limpar:
+                                if st.button("🧹 Limpar", key=f"clean_chat_{chat_id}", help="Apagar histórico desta conversa"):
+                                    st.session_state["chat_history"][chat_id] = []
+                                    st.rerun() # Recarrega a tela para sumir as mensagens
 
-                                res_ia = requests.post(
-                                    f"{BASE_URL}/processos/{p['id']}/analise-ia", 
-                                    headers=headers
-                                )
-                                
-                                if res_ia.status_code == 200:
-                                    st.success("Análise Concluída!")
-                                    st.rerun() # Recarrega a página para o resumo aparecer
-                                elif res_ia.status_code == 400:
-                                    st.warning("⚠️ Este processo precisa de um PDF anexado antes.")
-                                else:
-                                    st.error(f"Erro ao analisar: {res_ia.text}")
-                            except Exception as e:
-                                st.error("Erro de conexão com o backend.")
-    
+                            # 1. Mostra histórico
+                            for msg in st.session_state["chat_history"][chat_id]:
+                                with st.chat_message(msg["role"]):
+                                    st.markdown(msg["content"])
+
+                            # 2. Input do Usuário
+                            prompt = st.chat_input("Ex: Qual o valor da causa?", key=f"input_{chat_id}")
+                            
+                            if prompt:
+                                # Mostra msg usuário
+                                with st.chat_message("user"):
+                                    st.markdown(prompt)
+                                st.session_state["chat_history"][chat_id].append({"role": "user", "content": prompt})
+
+                                # Chama Backend
+                                with st.spinner("Analisando autos..."):
+                                    try:
+                                        res_chat = requests.post(
+                                            f"{BASE_URL}/processos/{p['id']}/chat", 
+                                            json={"pergunta": prompt}, 
+                                            headers=headers
+                                        )
+                                        if res_chat.status_code == 200:
+                                            resposta = res_chat.json()["resposta"]
+                                        else:
+                                            resposta = f"Erro na IA: {res_chat.text}"
+                                    except:
+                                        resposta = "Erro de conexão com o servidor."
+
+                                # Mostra msg IA
+                                with st.chat_message("assistant"):
+                                    st.markdown(resposta)
+                                st.session_state["chat_history"][chat_id].append({"role": "assistant", "content": resposta})
+
     elif opcao == "Configurações":
         st.header("⚙️ Configurações da Conta")
 
