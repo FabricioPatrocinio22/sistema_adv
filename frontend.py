@@ -161,12 +161,67 @@ else:
     # --- TELA 2: NOVO PROCESSO ---
     elif opcao == "Novo Processo":
         st.header("📝 Cadastrar Processo")
-        
+
+        # 1. Inicializa o estado se não existir
+        if "form_numero" not in st.session_state: st.session_state["form_numero"] = ""
+        if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
+        if "form_parte" not in st.session_state: st.session_state["form_parte"] = ""
+        if "form_data" not in st.session_state: st.session_state["form_data"] = date.today()
+
+        # --- ÁREA DE UPLOAD ---
+        with st.expander("✨ Preenchimento Automático com IA (Opcional)", expanded=True):
+            st.caption("Suba o PDF inicial para a IA tentar ler os dados.")
+            arquivo_pdf = st.file_uploader("Arraste o PDF aqui", type="pdf", key="upload_inicial")
+
+            if arquivo_pdf is not None:
+                if st.button("🪄 Extrair Dados do PDF"):
+                    with st.spinner("A IA está lendo o documento..."):
+                        files = {"arquivo": arquivo_pdf.getvalue()}
+                        try:
+                            res = requests.post(f"{BASE_URL}/ia/extrair-dados", files=files, headers=headers)
+                            
+                            if res.status_code == 200:
+                                dados_ia = res.json()
+                                
+                                # Atualiza Textos
+                                st.session_state["form_numero"] = dados_ia.get("numero_processo") or ""
+                                st.session_state["form_cliente"] = dados_ia.get("cliente") or ""
+                                st.session_state["form_parte"] = dados_ia.get("contra_parte") or ""
+                                
+                                # --- CORREÇÃO DA DATA AQUI ---
+                                raw_date = dados_ia.get("data_prazo")
+                                try:
+                                    # Tenta converter string ISO (2025-01-01) para objeto Date
+                                    if raw_date:
+                                        nova_data = date.fromisoformat(raw_date)
+                                    else:
+                                        nova_data = date.today()
+                                except ValueError:
+                                    # Se a IA mandou data mal formatada, usa hoje
+                                    nova_data = date.today()
+                                
+                                st.session_state["form_data"] = nova_data
+                                st.success("Dados extraídos!")
+                                st.rerun() # Força recarregar a página para exibir os dados novos
+                            else:
+                                st.error("Erro ao ler o PDF.")
+                        except Exception as e:
+                            st.error(f"Erro de conexão: {e}")
+
+        st.divider()
+
+        # --- O FORMULÁRIO ---
         with st.form("form_processo"):
-            numero = st.text_input("Número do Processo")
-            cliente = st.text_input("Nome do Cliente")
-            parte = st.text_input("Contra-parte")
-            data_prazo = st.date_input("Data do Prazo Fatal")
+            
+            # Garante que 'value' seja sempre um objeto data, nunca string
+            valor_data_seguro = st.session_state["form_data"]
+            if not isinstance(valor_data_seguro, date):
+                valor_data_seguro = date.today()
+
+            numero = st.text_input("Número do Processo", value=st.session_state["form_numero"])
+            cliente = st.text_input("Nome do Cliente", value=st.session_state["form_cliente"])
+            parte = st.text_input("Contra-parte", value=st.session_state["form_parte"])
+            data_prazo = st.date_input("Data do Prazo Fatal", value=valor_data_seguro)
             
             enviar = st.form_submit_button("Salvar Processo")
             
@@ -181,6 +236,15 @@ else:
                 
                 if res.status_code == 200:
                     st.success(f"Processo {numero} criado com sucesso!")
+                    
+                    # --- LIMPEZA DE DADOS APÓS SALVAR ---
+                    st.session_state["form_numero"] = ""
+                    st.session_state["form_cliente"] = ""
+                    st.session_state["form_parte"] = ""
+                    st.session_state["form_data"] = date.today() # Reseta a data para hoje
+                    
+                    # Opcional: sleep breve e rerun para dar sensação de atualização
+                    st.rerun()
                 else:
                     st.error(f"Erro: {res.text}")
 

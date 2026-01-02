@@ -1,8 +1,19 @@
 from google import genai
 from pypdf import PdfReader
 import os
+from dotenv import load_dotenv
 
-API_KEY = "AIzaSyC7WQczLzlFCX7bOS9kat0t8A9YwLqlEUo"
+# 1. Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# 2. Pega a chave do ambiente seguro
+chave_secreta = os.getenv("GEMINI_API_KEY")
+
+if not chave_secreta:
+    print("ERRO: Chave API não encontrada no arquivo .env")
+else:
+    # 3. Configura o Gemini
+    genai.Client(api_key=chave_secreta)
 
 
 def analisar_documento(caminho_pdf):
@@ -54,7 +65,7 @@ def analisar_documento(caminho_pdf):
         """
 
         # 3. Chamar a IA (SINTAXE NOVA CORRIGIDA)
-        client = genai.Client(api_key=API_KEY)
+        client = genai.Client(api_key=chave_secreta)
 
         # Na biblioteca nova, chamamos client.models.generate_content
         response = client.models.generate_content(

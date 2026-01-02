@@ -7,6 +7,8 @@ import pyotp
 import qrcode
 import io
 import base64
+import json
+from google import genai
 
 from ntpath import basename
 from fastapi.responses import StreamingResponse
@@ -20,6 +22,8 @@ from security import oauth2_scheme, verificar_token
 from fastapi.security import OAuth2PasswordRequestForm # Adicione este
 from datetime import date, timedelta # Adicione ao topo
 from fastapi.middleware.cors import CORSMiddleware
+from pypdf import PdfReader
+from dotenv import load_dotenv
 
 
 # Importamos nossas próprias criações:
@@ -27,6 +31,18 @@ from ia import analisar_documento
 from models import Processo, Usuario, UsuarioCreate
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
+
+# 1. Carrega as variáveis do arquivo .env
+load_dotenv()
+
+# 2. Pega a chave do ambiente seguro
+chave_secreta = os.getenv("GEMINI_API_KEY")
+
+if not chave_secreta:
+    print("ERRO: Chave API não encontrada no arquivo .env")
+else:
+    # 3. Configura o Gemini
+    genai.Client(api_key=chave_secreta)
 
 app = FastAPI()
 
@@ -439,3 +455,49 @@ def dados_dashboard(token: str = Depends(oauth2_scheme)):
             "proximos_prazos": prazos_lista,
             "grafico_status": status_distribuicao
         }
+
+@app.post("/ia/extrair-dados")
+async def extrair_dados_pdf(arquivo: UploadFile = File(...)):
+    """
+    Recebe um PDF, extrai o texto e pede ao Gemini para formatar como JSON
+    para preenchimento automático de formulário.
+    """
+    try:
+        #Ler o PDF
+        pdf_reader = PdfReader(arquivo.file)
+        texto_completo = ""
+        # Lê apenas as primeiras 5 páginas para economizar tokens e ser mais rápido
+        for i, page in enumerate(pdf_reader.pages):
+            if i > 5: break
+            texto_completo += page.extract_text()
+
+        prompt = f"""
+        Aja como um assistente jurídico. Analise o texto abaixo extraído de um processo judicial.
+        Extraia as seguintes informações e retorne APENAS um objeto JSON (sem ```json no inicio):
+        
+        1. "numero_processo": O número do processo (formato CNJ se houver).
+        2. "cliente": O nome da parte que parece ser o nosso cliente (ou Autor).
+        3. "contra_parte": O nome da outra parte (Réu).
+        4. "data_prazo": Uma data sugerida para o próximo prazo no formato YYYY-MM-DD. Se não achar, use a data de hoje.
+        
+        Texto do processo:
+        {texto_completo}
+        """
+
+        # 3. Chamar a IA (SINTAXE NOVA CORRIGIDA)
+        client = genai.Client(api_key=chave_secreta)
+
+        # Na biblioteca nova, chamamos client.models.generate_content
+        response = client.models.generate_content(
+            model="models/gemini-3-flash-preview", 
+            contents=prompt
+        )
+
+        resposta_texto = response.text.replace("```json", "").replace("```", "").strip()
+        dados_json = json.loads(resposta_texto)
+
+        return dados_json
+    
+    except Exception as e:
+        print(f"Erro na extração: {e}")
+        raise HTTPException(status_code=500, detail="Não foi possível extrair dados do PDF.")
