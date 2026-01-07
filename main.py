@@ -34,6 +34,7 @@ from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
 import boto3
 from botocore.exceptions import NoCredentialsError
+from botocore.config import Config
 
 # 1. Carrega as variáveis do arquivo .env
 load_dotenv()
@@ -41,7 +42,8 @@ load_dotenv()
 s3_client = boto3.client('s3',
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION")
+    region_name=os.getenv("AWS_REGION"),
+    config=Config(signature_version='s3v4')
 )
 
 # 2. Pega a chave do ambiente seguro
