@@ -13,15 +13,18 @@ Sistema completo de gerenciamento de processos jurídicos desenvolvido com FastA
 ### 📋 Gerenciamento de Processos
 - CRUD completo de processos jurídicos
 - Upload de documentos PDF anexados aos processos
-- Download de documentos
+- Download de documentos via links pré-assinados
 - Sistema de prazos e processos urgentes
 - Associação de processos aos usuários
+- Auto preenchimento de dados do processo via IA a partir de PDF
 
 ### 🤖 IA Jurídica
 - Análise automática de documentos PDF usando Google Gemini AI
 - Resumo inteligente de documentos jurídicos
 - Identificação de informações importantes (datas, partes, tipo de documento)
 - Triagem processual automatizada
+- Auto preenchimento de formulários a partir de PDFs
+- Extração inteligente de dados (número do processo, partes envolvidas, datas)
 
 ### 📊 Dashboard
 - Visualização de estatísticas gerais
@@ -44,6 +47,8 @@ Sistema completo de gerenciamento de processos jurídicos desenvolvido com FastA
 - **PyOTP** - Autenticação de dois fatores
 - **Google Gemini AI** - Análise inteligente de documentos
 - **PyPDF** - Extração de texto de PDFs
+- **AWS S3 (boto3)** - Armazenamento de arquivos na nuvem
+- **Python-dotenv** - Gerenciamento de variáveis de ambiente
 
 ### Frontend
 - **Streamlit** - Interface web interativa
@@ -132,30 +137,60 @@ sistema_advogado/
 - `PUT /processos/{id}` - Atualizar processo
 - `DELETE /processos/{id}` - Excluir processo
 - `GET /processos/urgents` - Listar processos urgentes
-- `POST /processos/{id}/anexo` - Anexar arquivo PDF ao processo
-- `GET /processos/{id}/download` - Download do arquivo anexado
+- `POST /processos/{id}/anexo` - Anexar arquivo PDF ao processo (armazena no AWS S3)
+- `GET /processos/{id}/download` - Obter link pré-assinado para download do arquivo
 - `POST /processos/{id}/analise-ia` - Analisar documento com IA
+- `POST /processos/extrair-dados-pdf` - Extrair e preencher dados do processo via IA a partir de PDF
 
 ### Dashboard
 - `GET /dashboard/geral` - Estatísticas gerais do sistema
 
 ## ⚙️ Configuração
 
-1. Crie um arquivo `.env` na raiz do projeto (opcional):
+### 1. Variáveis de Ambiente
+
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
+
 ```bash
+# Segurança
 SECRET_KEY=sua_chave_secreta_super_segura_aqui
+
+# Backend
 BACKEND_URL=http://127.0.0.1:8000
+
+# AWS S3 (para armazenamento de arquivos na nuvem)
+AWS_ACCESS_KEY_ID=sua_access_key_aws
+AWS_SECRET_ACCESS_KEY=sua_secret_key_aws
+AWS_REGION=us-east-1
+AWS_BUCKET_NAME=nome-do-seu-bucket
+
+# Google Gemini AI
+GEMINI_API_KEY=sua_api_key_do_google_gemini
 ```
 
-2. Configure a API Key do Google Gemini no arquivo `ia.py`:
-```python
-API_KEY = "sua_api_key_do_google_gemini"
-```
+### 2. Configuração do Google Gemini AI
+
+Configure a API Key do Google Gemini no arquivo `ia.py` ou use a variável de ambiente `GEMINI_API_KEY`:
 
 Para obter uma API Key:
 - Acesse [Google AI Studio](https://makersuite.google.com/app/apikey)
 - Crie uma nova API Key
-- Substitua no arquivo `ia.py`
+- Adicione no arquivo `.env` como `GEMINI_API_KEY`
+
+### 3. Configuração do AWS S3
+
+1. **Criar conta AWS**: Acesse [AWS Console](https://console.aws.amazon.com/)
+2. **Criar S3 Bucket**: 
+   - Acesse o serviço S3
+   - Crie um novo bucket
+   - Configure as permissões necessárias
+3. **Criar IAM User**:
+   - Acesse IAM no AWS Console
+   - Crie um usuário com permissões para S3 (AmazonS3FullAccess ou permissões personalizadas)
+   - Gere Access Key e Secret Key
+   - Adicione as credenciais no arquivo `.env`
+
+**Nota**: Em produção, nunca commite o arquivo `.env` com credenciais reais!
 
 ## 🔒 Segurança
 
@@ -169,24 +204,52 @@ Para obter uma API Key:
 
 A IA Jurídica utiliza o Google Gemini para analisar documentos PDF:
 
+### Análise de Documentos
+
 1. Faça upload de um arquivo PDF através do endpoint `/processos/{id}/anexo`
-2. Chame o endpoint `/processos/{id}/analise-ia` para analisar o documento
-3. A IA retornará um resumo estruturado com:
+2. O arquivo será automaticamente salvo no AWS S3
+3. Chame o endpoint `/processos/{id}/analise-ia` para analisar o documento
+4. A IA retornará um resumo estruturado com:
    - Tipo de documento
    - Informações das partes envolvidas
    - Datas importantes
    - Resumo do conteúdo
    - Observações relevantes
 
+### Auto Preenchimento de Formulários
+
+1. Use o endpoint `/processos/extrair-dados-pdf` enviando um PDF
+2. A IA extrairá automaticamente:
+   - Número do processo
+   - Nome do cliente
+   - Nome da contra-parte
+   - Status do processo
+   - Data de prazo (se disponível)
+3. Os dados serão retornados prontos para preencher o formulário de cadastro
+
+## ☁️ Armazenamento na Nuvem (AWS S3)
+
+Todos os arquivos PDF são armazenados no AWS S3 para:
+- ✅ Escalabilidade e performance
+- ✅ Backup automático
+- ✅ Segurança e redundância
+- ✅ Acesso rápido via links pré-assinados
+- ✅ Economia de espaço no servidor
+
+Os links de download são gerados dinamicamente e têm expiração automática para segurança.
+
 ## 🌟 Recursos em Destaque
 
 - ✅ Interface moderna e responsiva com Streamlit
 - ✅ Análise inteligente de documentos jurídicos
 - ✅ Sistema de prazos e alertas de urgência
-- ✅ Upload e gerenciamento de documentos
+- ✅ Upload e gerenciamento de documentos na nuvem (AWS S3)
+- ✅ Download seguro via links pré-assinados
+- ✅ Auto preenchimento inteligente de formulários via IA
 - ✅ Dashboard com estatísticas em tempo real
 - ✅ Autenticação robusta com 2FA
 - ✅ API RESTful bem documentada
+- ✅ Armazenamento escalável e seguro na nuvem
 
 ## 📄 Licença
 
