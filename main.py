@@ -218,7 +218,7 @@ def baixar_arquivo(processo_id: int, token: str = Depends(oauth2_scheme)):
 
     with Session(engine) as session:
 
-        user = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
         processo = session.get(Processo, processo_id)
 
         if not processo or processo.usuario_id != usuario.id:
