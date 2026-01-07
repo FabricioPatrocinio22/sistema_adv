@@ -32,9 +32,17 @@ from ia import analisar_documento
 from models import Processo, Usuario, UsuarioCreate
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
+import boto3
+from botocore.exceptions import NoCredentialsError
 
 # 1. Carrega as variáveis do arquivo .env
 load_dotenv()
+
+s3_client = boto3.client('s3',
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION")
+)
 
 # 2. Pega a chave do ambiente seguro
 chave_secreta = os.getenv("GEMINI_API_KEY")
@@ -183,27 +191,26 @@ def anexar_arquivo(
         if not processo or processo.usuario_id != usuario.id:
             raise HTTPException(status_code=404, detail="Processo não encontrado ou acesso negado")
 
-        # 2. Cria a pasta 'uploads' se ela não existir
-        pasta_destino = "uploads"
-        if not os.path.exists(pasta_destino):
-            os.makedirs(pasta_destino)
+        nome_s3 = f"{processo.id}/{arquivo.filename}"
 
-        # 3. Define o nome do arquivo (Ex: processo_1_contrato.pdf)
-        # Usamos o ID para evitar que arquivos com mesmo nome se sobrescrevam
-        nome_arquivo = f"processo_{processo.id}_{arquivo.filename}"
-        caminho_completo = os.path.join(pasta_destino, nome_arquivo)
+        try:
+            s3_client.upload_fileobj(
+                arquivo.file,
+                os.getenv("AWS_BUCKET_NAME"),
+                nome_s3
+            )
+        except NoCredentialsError:
+            raise HTTPException(status_code=500, detail="Credenciais AWS não configuradas")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao enviar arquivo para S3: {str(e)}")
 
-        # 4. Salva o arquivo no disco
-        with open(caminho_completo, "wb") as buffer:
-            shutil.copyfileobj(arquivo.file, buffer)
-
-        # 5. Salva o caminho no Banco de Dados
-        processo.arquivo_pdf = caminho_completo
+        # Salva o caminho no banco de dados
+        processo.arquivo_pdf = nome_s3
         session.add(processo)
         session.commit()
         session.refresh(processo)
 
-        return {"mensagem": "Arquivo enviado com sucesso!", "caminho": caminho_completo}
+        return {"mensagem": "Arquivo salvo na nuvem AWS!", "caminho": processo.arquivo_pdf}
 
 @app.get("/processos/{processo_id}/download")
 def baixar_arquivo(processo_id: int, token: str = Depends(oauth2_scheme)):
@@ -214,22 +221,27 @@ def baixar_arquivo(processo_id: int, token: str = Depends(oauth2_scheme)):
         user = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
         processo = session.get(Processo, processo_id)
 
-        if not processo:
-            raise HTTPException(status_code=404, detail="Processo não encontrado")
-
-        if processo.usuario_id != user.id:
-            raise HTTPException(status_code=403, detail="Você nao tem permissão para acessar esse arquivo")
-
+        if not processo or processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Acesso negado")
+        
         if not processo.arquivo_pdf:
-            raise HTTPException(status_code=404, detail="Este processo não tem arquivos anexados")
+             raise HTTPException(status_code=404, detail="Sem anexo")
 
-        if not os.path.isfile(processo.arquivo_pdf):
-            raise HTTPException(status_code=404, detail="Arquivo não encontrado no servidor (pode ter sido apagado)")
+        try:
 
-        return FileResponse(
-            path=processo.arquivo_pdf,
-            filename=os.path.basename(processo.arquivo_pdf)
-        )
+            url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": os.getenv("AWS_BUCKET_NAME"),
+                    "Key": processo.arquivo_pdf
+                },
+                ExpiresIn=3600
+            )
+            return {"url_download": url}
+        except NoCredentialsError:
+            raise HTTPException(status_code=500, detail="Credenciais AWS não configuradas")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao gerar URL de download: {str(e)}")
 
 @app.delete("/processos/{processo_id}")
 def excluir_processo(processo_id: int, token: str = Depends(oauth2_scheme)):

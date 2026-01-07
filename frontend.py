@@ -296,9 +296,15 @@ else:
                                     st.success("Enviado!")
                                     st.rerun()
                             else:
-                                st.success("✅ PDF Anexado")
-                                link = f"{BASE_URL}/processos/{p['id']}/download"
-                                st.markdown(f"[📥 Baixar Documento]({link})")
+                                st.success(f"✅ Arquivo na Nuvem: {p.get('arquivo_pdf')}")
+
+                                if st.button("📥 Gerar Link de Download", key=f"btn_down_{p['id']}"):
+                                    res_link = requests.get(f"{BASE_URL}/processos/{p['id']}/download", headers=headers)
+                                    if res_link.status_code == 200:
+                                        link = res_link.json()["url_download"]
+                                        st.markdown(f"[📥 Baixar Documento]({link})")
+                                    else:
+                                        st.error("Erro ao gerar link de download.")
 
                         # Edição Rápida
                         with col_edit:
