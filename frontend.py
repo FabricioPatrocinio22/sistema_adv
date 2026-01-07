@@ -321,6 +321,28 @@ else:
                                 requests.delete(f"{BASE_URL}/processos/{p['id']}", headers=headers)
                                 st.rerun()
 
+                        #Botao Resumo IA
+                        st.divider()
+                        st.markdown("#### 🧠 Resumo do Caso (IA)")
+
+                        if p.get("resumo_ia"):
+                            st.info(f"**Análise Automática:**\n\n{p['resumo_ia']}")
+
+                        if p.get("arquivo_pdf"):
+                            if st.button("🔍 Analisar com IA", key=f"btn_ia_{p['id']}"):
+                                with st.spinner("Analisando com IA..."):
+                                    try:
+                                        res_ia = requests.post(f"{BASE_URL}/processos/{p['id']}/analise-ia", headers=headers)
+                                        if res_ia.status_code == 200:
+                                            st.success("Análise concluída!")
+                                            st.rerun()
+                                        else:
+                                            st.error("Erro na IA.")
+                                    except Exception as e:
+                                        st.error(f"Erro de conexão: {e}")
+                        else:
+                            st.caption("Nenhum PDF anexado. Não é possível usar a IA.")
+
                     # ABA 2: CHAT COM IA
                     with tab_chat:
                         if not p.get("arquivo_pdf"):

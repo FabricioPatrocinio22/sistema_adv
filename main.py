@@ -410,14 +410,44 @@ def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
         if not processo.arquivo_pdf:
              raise HTTPException(status_code=400, detail="Este processo não tem PDF para ler.")
 
-        resumo = analisar_documento(processo.arquivo_pdf)
+        texto_pdf = ''
+        try:
+            response = s3_client.get_object(Bucket=os.getenv("AWS_BUCKET_NAME"), Key=processo.arquivo_pdf)
+            arquivo_memoria = io.BytesIO(response['Body'].read())
+            pdf_reader = PdfReader(arquivo_memoria)
+            for i, page in enumerate(pdf_reader.pages):
+                if i > 20: break
+                texto_pdf += page.extract_text()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao ler PDF: {str(e)}")
 
-        # 3. Salva o resultado no banco
-        processo.resumo_ia = resumo
-        session.add(processo)
-        session.commit()
+        prompt = f"""
+        Aja como um assistente jurídico. Analise o texto abaixo extraído de um processo judicial.
+        Extraia as seguintes informações e retorne APENAS um objeto JSON (sem ```json no inicio):
+        
+        1. "numero_processo": O número do processo (formato CNJ se houver).
+        2. "cliente": O nome da parte que parece ser o nosso cliente (ou Autor).
+        3. "contra_parte": O nome da outra parte (Réu).
+        4. "data_prazo": Uma data sugerida para o próximo prazo no formato YYYY-MM-DD. Se não achar, use a data de hoje.
+        """
 
-        return {"mensagem": "Análise concluída!", "resumo": resumo}
+        try:
+            client = genai.Client(api_key=chave_secreta)
+            response = client.models.generate_content(
+                model="models/gemini-3-flash-preview",
+                contents=prompt
+            )
+            resumo = response.text
+
+            processo.resumo_ia = resumo
+            session.add(processo)
+            session.commit()
+
+            return {"mensagem": "Resumo da IA gerado com sucesso!", "resumo": resumo}
+        except Exception as e:
+            print(f"Erro na extração: {e}")
+            raise HTTPException(status_code=500, detail="Não foi possível extrair dados do PDF.")
+
 
 @app.get("/dashboard/geral")
 def dados_dashboard(token: str = Depends(oauth2_scheme)):
@@ -540,44 +570,39 @@ def chat_com_processo(
         if not processo.arquivo_pdf:
             raise HTTPException(status_code=400, detail="Este processo não tem PDF anexado para ler.")
 
-        if not os.path.exists(processo.arquivo_pdf):
-            raise HTTPException(status_code=404, detail="Arquivo físico não encontrado no servidor.")
-
         texto_pdf = ''
         try:
-            with open(processo.arquivo_pdf, 'rb') as f:
-                pdf_reader = PdfReader(f)
+            
+            response = s3_client.get_object(Bucket=os.getenv("AWS_BUCKET_NAME"), Key=processo.arquivo_pdf)
 
-                for i, page in enumerate(pdf_reader.pages):
-                    if i > 20: break
-                    texto_pdf += page.extract_text()
+            arquivo_memoria = io.BytesIO(response['Body'].read())
+
+            pdf_reader = PdfReader(arquivo_memoria)
+
+            for i, page in enumerate(pdf_reader.pages):
+                if i > 20: break
+                texto_pdf += page.extract_text()
+
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
-            raise HTTPException(status_code=500, detail="Erro ao ler o arquivo PDF.")
+            raise HTTPException(status_code=500, detail="Erro ao baixar ou ler o arquivo PDF da nuvem.")
         
-        pergunta_usuario = dados.get("pergunta")
-
+        pergunta = dados.get("pergunta")
         prompt_sistema = f"""
-        Você é um assistente jurídico sênior e experiente.
-        Responda à pergunta do usuário baseando-se EXCLUSIVAMENTE no conteúdo do processo fornecido abaixo.
-        Se a informação não estiver no texto, diga que não encontrou.
-
+        Você é um assistente jurídico. Responda com base no texto abaixo.
         --- TEXTO DO PROCESSO ---
         {texto_pdf}
-        --- FIM DO TEXTO ---
-
-        Pergunta do Advogado: {pergunta_usuario}
+        --- FIM ---
+        Pergunta: {pergunta}
         """
 
         try:
-            # 5. Chama o Gemini (Usando a biblioteca nova 'google.genai' que você já configurou)
+
             client = genai.Client(api_key=chave_secreta)
-            
             response = client.models.generate_content(
-                model="models/gemini-3-flash-preview", # Use o modelo mais recente disponível
+                model="models/gemini-3-flash-preview",
                 contents=prompt_sistema
             )
-            
             return {"resposta": response.text}
         except Exception as e:
             print(f"Erro na IA: {e}")
