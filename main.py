@@ -415,20 +415,27 @@ def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
             response = s3_client.get_object(Bucket=os.getenv("AWS_BUCKET_NAME"), Key=processo.arquivo_pdf)
             arquivo_memoria = io.BytesIO(response['Body'].read())
             pdf_reader = PdfReader(arquivo_memoria)
+
             for i, page in enumerate(pdf_reader.pages):
                 if i > 20: break
                 texto_pdf += page.extract_text()
+                
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erro ao ler PDF: {str(e)}")
 
         prompt = f"""
-        Aja como um assistente jurídico. Analise o texto abaixo extraído de um processo judicial.
-        Extraia as seguintes informações e retorne APENAS um objeto JSON (sem ```json no inicio):
-        
-        1. "numero_processo": O número do processo (formato CNJ se houver).
-        2. "cliente": O nome da parte que parece ser o nosso cliente (ou Autor).
-        3. "contra_parte": O nome da outra parte (Réu).
-        4. "data_prazo": Uma data sugerida para o próximo prazo no formato YYYY-MM-DD. Se não achar, use a data de hoje.
+        Você é um assistente jurídico sênior.
+        Analise o texto do processo abaixo e gere um RESUMO EXECUTIVO em formato de texto (Markdown).
+        NÃO retorne JSON. Retorne um texto legível para um advogado ler rápido.
+
+        Estrutura sugerida:
+        **📝 Resumo dos Fatos:** (O que aconteceu resumidamente)
+        **⚖️ Partes:** (Quem está processando quem)
+        **💰 Pedidos e Valores:** (O que está sendo pedido)
+        **⚠️ Pontos de Atenção:** (Prazos ou riscos imediatos identificados)
+
+        --- TEXTO DO PROCESSO ---
+        {texto_pdf}
         """
 
         try:
