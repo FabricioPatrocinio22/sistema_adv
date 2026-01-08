@@ -400,7 +400,7 @@ else:
                     with tab_fin:
                         st.write("#### 💸 Controle de Honorários e Custas")
 
-                        with st.expander("➕ Novo Lançamento", expander=False):
+                        with st.expander("➕ Novo Lançamento", expanded=False):
                             with st.form(key=f"form_fin_{p['id']}"):
                                 c_desc, c_valor = st.columns(2)
                                 f_desc = c_desc.text_input("Descrição (Ex: Entrada)")
