@@ -100,10 +100,10 @@ else:
         del st.session_state["token"]
         st.rerun()
 
-    # --- TELA 1: DASHBOARD ---
+    # --- TELA 1: DASHBOARD (VISUAL NOVO) ---
     if opcao == "Dashboard":
         st.header("📊 Visão Geral")
-        st.markdown("Visão geral estratégica do seu escritório.")
+        st.markdown("Visão estratégica do escritório em tempo real.")
         
         try:
             res = requests.get(f"{BASE_URL}/dashboard/geral", headers=headers)
@@ -111,47 +111,92 @@ else:
             if res.status_code == 200:
                 dados = res.json()
 
-                #--- LINHA 1: KPIs (Indicadores Chave) ---
-                col1, col2, col3, col4 = st.columns(4)
+                # --- BLOCO 1: OPERACIONAL (PROCESSOS) ---
+                with st.container(border=True):
+                    st.subheader("📂 Métricas Operacionais")
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    col1.metric("Total Processos", dados["total"])
+                    col2.metric("Ativos", dados["ativos"])
+                    col3.metric("Concluídos", dados["concluidos"])
+                    col4.metric("⚠️ Vencidos", dados["vencidos"], delta_color="inverse")
 
-                col1.metric("Total de Processos", dados["total"])
-                col2.metric("Ativos", dados["ativos"])
+                # --- BLOCO 2: FINANCEIRO (COM MAIS ESPAÇO) ---
+                # Usamos um container para agrupar e dar destaque visual
+                with st.container(border=True):
+                    st.subheader("💰 Controle Financeiro")
+                    
+                    # Dividimos em 2 colunas grandes em vez de 4 pequenas
+                    fin_col1, fin_col2 = st.columns(2)
 
-                col3.metric("Faturamento Total", f"R$ {dados.get('total_recebido', 0):.2f}")
-                col4.metric("A Receber", f"R$ {dados.get('total_pendente', 0):.2f}", delta_color="normal")
+                    with fin_col1:
+                        st.markdown("##### 📈 Receitas")
+                        # Faturamento Total
+                        st.metric(
+                            "Faturamento Previsto (Honorários)", 
+                            f"R$ {dados.get('total_pendente', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        )
+                        st.divider()
+                        # O que já entrou
+                        st.metric(
+                            "✅ Em Caixa (Recebido)", 
+                            f"R$ {dados.get('total_recebido', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                            delta="Entrada Realizada"
+                        )
 
-                st.divider()
+                    with fin_col2:
+                        st.markdown("##### 📉 Pendências & Custas")
+                        # O que falta receber
+                        st.metric(
+                            "⏳ A Receber", 
+                            f"R$ {dados.get('financeiro_pendente', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                            delta_color="normal"
+                        )
+                        st.divider()
+                        # Custas
+                        valor_custas = dados.get('financeiro_custas', 0)
+                        st.metric(
+                            "💸 Custas/Despesas", 
+                            f"R$ {valor_custas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 
+                            delta="-Saída" if valor_custas > 0 else None,
+                            delta_color="inverse"
+                        )
 
-                # --- LINHA 2: GRÁFICOS E PRAZOS ---
-                col_grafico, col_prazos = st.columns([1, 2])
+                # --- BLOCO 3: GRÁFICOS E PRAZOS ---
+                # Mantemos a estrutura de baixo, mas com um espaçamento melhor
+                st.write("") # Espaço em branco
+                
+                col_grafico, col_prazos = st.columns([1, 1.5]) # Ajustei a proporção para o gráfico não ficar espremido
 
                 with col_grafico:
-                    st.subheader("Status dos Processos")
-                    # Gráfico simples de barras
-                    st.bar_chart(dados["grafico_status"])
+                    with st.container(border=True):
+                        st.subheader("Status")
+                        if dados["grafico_status"]:
+                            st.bar_chart(dados["grafico_status"])
+                        else:
+                            st.info("Sem dados.")
 
                 with col_prazos:
-                    st.subheader("📅 Próximos Prazos (30 dias)")
+                    with st.container(border=True):
+                        st.subheader("📅 Próximos Prazos (30 dias)")
+                        lista_prazos = dados.get("proximos_prazos", [])
 
-                    lista_prazos = dados["proximos_prazos"]
-
-                    if lista_prazos:
-
-                        for p in lista_prazos:
-                            dias = p["dias_restantes"]
-
-                            # Define a cor do alerta baseada nos dias
-                            cor_alerta = "🔴" if dias <= 5 else "🟡" if dias <= 15 else "🟢"
-                            msg_dias = "HOJE!" if dias == 0 else f"em {dias} dias"
-
-                            with st.container(border=True):
-                                col_a, col_b = st.columns([3, 1])
-                                col_a.markdown(f"**{cor_alerta} Processo {p['numero']}**")
-                                col_a.caption(f"Cliente: {p['cliente']}")
-                                col_b.write(f"**{msg_dias}**")
-                                col_b.caption(f"{p['data']}")
-                    else:
-                        st.success("Tudo tranquilo! Nenhum prazo crítico para os próximos 30 dias.")
+                        if lista_prazos:
+                            for p in lista_prazos:
+                                dias = p["dias_restantes"]
+                                cor = "🔴" if dias <= 5 else "🟡" if dias <= 15 else "🟢"
+                                msg_dias = "HOJE!" if dias == 0 else f"em {dias} dias"
+                                
+                                # Cardzinho para cada prazo
+                                with st.container():
+                                    c_a, c_b = st.columns([3, 1])
+                                    c_a.markdown(f"**{cor} {p['numero']}**")
+                                    c_a.caption(f"{p['cliente']}")
+                                    c_b.write(f"**{msg_dias}**")
+                                    c_b.caption(f"{p['data']}")
+                                st.divider()
+                        else:
+                            st.success("Tudo tranquilo! Nenhum prazo crítico.")
 
             else:
                 st.error("Erro ao carregar dados do dashboard.")

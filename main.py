@@ -262,11 +262,25 @@ def excluir_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
         if db_processo.usuario_id != usuario.id:
             raise HTTPException(status_code=404, detail="Permissão negada")
 
+        financeiros = session.exec(select(Financeiro).where(Financeiro.processo_id == processo_id)).all()
+        for item in financeiros:
+            session.delete(item)
+
+        if db_processo.arquivo_pdf:
+            try:
+                s3_client.delete_object(
+                    Bucket=os.getenv("AWS_BUCKET_NAME"),
+                    Key=db_processo.arquivo_pdf
+                )
+                print(f"Arquivo {db_processo.arquivo_pdf} apagado do S3.")
+            except Exception as e:
+                print(f"Erro ao apagar do S3 (mas vamos seguir): {e}")
+
         # 2. Deleta e confirma
         session.delete(db_processo)
         session.commit()
         
-        return {"mensagem": f"Processo {processo_id} excluído com sucesso"}
+        return {"mensagem": f"Processo e todos os dados vinculados foram excluídos com sucesso"}
 
 @app.post("/usuarios")
 def cadastrar_usuario(usuario_data: UsuarioCreate):
