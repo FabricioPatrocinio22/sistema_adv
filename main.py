@@ -8,6 +8,7 @@ import qrcode
 import io
 import base64
 import json
+import time
 from google import genai
 
 from ntpath import basename

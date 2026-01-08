@@ -3,6 +3,7 @@ import requests
 from datetime import date
 import os
 import base64
+import time
 
 # Endereço do seu Backend (FastAPI)
 BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
@@ -116,8 +117,8 @@ else:
                 col1.metric("Total de Processos", dados["total"])
                 col2.metric("Ativos", dados["ativos"])
 
-                col3.metric("Faturamento Total", f"R$ {dados.get('financeiro_total', 0):.2f}")
-                col4.metric("A Receber", f"R$ {dados.get('financeiro_pendente', 0):.2f}", delta_color="normal")
+                col3.metric("Faturamento Total", f"R$ {dados.get('total_recebido', 0):.2f}")
+                col4.metric("A Receber", f"R$ {dados.get('total_pendente', 0):.2f}", delta_color="normal")
 
                 st.divider()
 
@@ -407,8 +408,8 @@ else:
                                 f_valor = c_valor.number_input("Valor (R$)", min_value=0.0, step=100.0)
 
                                 c_tipo, c_status, c_data = st.columns(3)
-                                f_tipo = c_tipo.selectbox("Tipo", ["Honorários", "Custas", "Reembolso"])
-                                f_status = c_status.selectbox("Status", ["Pendente", "Pago"])
+                                f_tipo = c_tipo.selectbox("Tipo", ["Honorários", "Recebido", "Reembolso"])
+                                f_status = c_status.selectbox("Status", ["Pendente", "Recebido"])
                                 f_data = c_data.date_input("Data Vencimento")
 
                                 if st.form_submit_button("Salvar Lançamento"):
@@ -421,11 +422,18 @@ else:
                                         "data_pagamento": str(f_data)
                                     }
                                     try:
-                                        requests.post(f"{BASE_URL}/financeiro", json=payload_fin, headers=headers)
-                                        st.success("Salvo!")
-                                        st.rerun()
-                                    except:
-                                        st.error("Erro ao salvar.")
+                                        res = requests.post(f"{BASE_URL}/financeiro", json=payload_fin, headers=headers)
+
+                                        if res.status_code == 200:
+                                            st.success("✅ Lançamento Salvo!")
+
+                                            time.sleep(1.5)
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Erro ao salvar: {res.text}")
+
+                                    except Exception as e:
+                                        st.error(f"Erro de conexão: {e}")
                         
                         try:
                             res_fin = requests.get(f"{BASE_URL}/processos/{p['id']}/financeiro", headers=headers)
