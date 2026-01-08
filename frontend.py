@@ -115,10 +115,9 @@ else:
 
                 col1.metric("Total de Processos", dados["total"])
                 col2.metric("Ativos", dados["ativos"])
-                col3.metric("Concluídos", dados["concluidos"])
 
-                # Destaque vermelho para vencidos
-                col4.metric("⚠️ Prazos Vencidos", dados["vencidos"], delta_color="inverse")
+                col3.metric("Faturamento Total", f"R$ {dados.get('financeiro_total', 0):.2f}")
+                col4.metric("A Receber", f"R$ {dados.get('financeiro_pendente', 0):.2f}", delta_color="normal")
 
                 st.divider()
 
@@ -273,7 +272,7 @@ else:
                     c_top2.markdown(f"Status: :{status_color}[{p['status']}]")
 
                     # --- SISTEMA DE ABAS ---
-                    tab_detalhes, tab_chat = st.tabs(["📄 Detalhes & Arquivos", "💬 Chat Jurídico (IA)"])
+                    tab_detalhes, tab_chat, tab_fin = st.tabs(["📄 Detalhes & Arquivos", "💬 Chat Jurídico (IA)", "💰 Financeiro"])
 
                     # ABA 1: DETALHES (O que já existia + Upload + Edição)
                     with tab_detalhes:
@@ -397,6 +396,58 @@ else:
                                 with st.chat_message("assistant"):
                                     st.markdown(resposta)
                                 st.session_state["chat_history"][chat_id].append({"role": "assistant", "content": resposta})
+
+                    with tab_fin:
+                        st.write("#### 💸 Controle de Honorários e Custas")
+
+                        with st.expander("➕ Novo Lançamento", expander=False):
+                            with st.form(key=f"form_fin_{p['id']}"):
+                                c_desc, c_valor = st.columns(2)
+                                f_desc = c_desc.text_input("Descrição (Ex: Entrada)")
+                                f_valor = c_valor.number_input("Valor (R$)", min_value=0.0, step=100.0)
+
+                                c_tipo, c_status, c_data = st.columns(3)
+                                f_tipo = c_tipo.selectbox("Tipo", ["Honorários", "Custas", "Reembolso"])
+                                f_status = c_status.selectbox("Status", ["Pendente", "Pago"])
+                                f_data = c_data.date_input("Data Vencimento")
+
+                                if st.form_submit_button("Salvar Lançamento"):
+                                    payload_fin = {
+                                        "processo_id": p['id'],
+                                        "descricao": f_desc,
+                                        "valor": f_valor,
+                                        "tipo": f_tipo,
+                                        "status": f_status,
+                                        "data_pagamento": str(f_data)
+                                    }
+                                    try:
+                                        requests.post(f"{BASE_URL}/financeiro", json=payload_fin, headers=headers)
+                                        st.success("Salvo!")
+                                        st.rerun()
+                                    except:
+                                        st.error("Erro ao salvar.")
+                        
+                        try:
+                            res_fin = requests.get(f"{BASE_URL}/processos/{p['id']}/financeiro", headers=headers)
+                            if res_fin.status_code == 200:
+                                lista_fin = res_fin.json()
+                                if lista_fin:
+                                        # Monta uma tabela simples visual
+                                    dados_tabela = []
+                                    for item in lista_fin:
+                                        dados_tabela.append({
+                                            "Data": item["data_pagamento"],
+                                            "Descrição": item["descricao"],
+                                            "Tipo": item["tipo"],
+                                            "Valor": f"R$ {item['valor']:.2f}",
+                                            "Status": item["status"]
+                                        })
+                                    st.table(dados_tabela)
+                            else:
+                                st.info("Nenhum lançamento financeiro para este processo.")
+                        except:
+                            st.error("Erro ao carregar financeiro.")
+
 
     elif opcao == "Configurações":
         st.header("⚙️ Configurações da Conta")

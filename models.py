@@ -25,3 +25,14 @@ class Usuario(SQLModel, table=True):
     secret_2fa: Optional[str] = None  # Para o Google Authenticator (TOTP)
     is_2fa_enabled: bool = False      # Controle de ativação
     totp_secret: Optional[str] = None
+
+class Financeiro(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    processo_id: Optional[int] = Field(default=None, foreign_key="processo.id")
+    usuario_id: Optional[int] = Field(default=None, foreign_key="usuario.id")
+
+    descricao: str
+    tipo: str
+    valor: float
+    data_pagamento: date
+    status: str

@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 
 # Importamos nossas próprias criações:
 from ia import analisar_documento
-from models import Processo, Usuario, UsuarioCreate
+from models import Processo, Usuario, UsuarioCreate, Financeiro
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
 import boto3
@@ -419,7 +419,7 @@ def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
             for i, page in enumerate(pdf_reader.pages):
                 if i > 20: break
                 texto_pdf += page.extract_text()
-                
+
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erro ao ler PDF: {str(e)}")
 
@@ -455,7 +455,6 @@ def solicitar_resumo_ia(processo_id: int, token: str = Depends(oauth2_scheme)):
             print(f"Erro na extração: {e}")
             raise HTTPException(status_code=500, detail="Não foi possível extrair dados do PDF.")
 
-
 @app.get("/dashboard/geral")
 def dados_dashboard(token: str = Depends(oauth2_scheme)):
     email_user = verificar_token(token)
@@ -464,24 +463,25 @@ def dados_dashboard(token: str = Depends(oauth2_scheme)):
         usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
         processos = session.exec(select(Processo).where(Processo.usuario_id == usuario.id)).all()
 
+        financeiro = session.exec(select(Financeiro).where(Financeiro.usuario_id == usuario.id)).all()
+
+        total_honorarios = sum(l.valor for l in financeiro if l.tipo == "Honorários")
+        total_recebido = sum(l.valor for l in financeiro if l.tipo == "Recebido")
+        total_pendente = total_honorarios - total_recebido
+
         total_processos = len(processos)
         ativos = sum(1 for p in processos if p.status == "Em Andamento")
         concluidos = sum(1 for p in processos if p.status == "Concluído")
 
-        # 2. Prazos Urgentes (Próximos 30 dias)
         hoje = date.today()
         limite_urgencia = hoje + timedelta(days=30)
-
         prazos_lista = []
         prazos_vencidos = 0
 
         for p in processos:
             if p.data_prazo:
-                # Conta Vencidos
                 if p.data_prazo < hoje and p.status != "Concluído":
                     prazos_vencidos += 1
-                
-                # Lista os próximos urgentes
                 elif hoje <= p.data_prazo <= limite_urgencia and p.status != "Concluído":
                     dias_restantes = (p.data_prazo - hoje).days
                     prazos_lista.append({
@@ -491,10 +491,7 @@ def dados_dashboard(token: str = Depends(oauth2_scheme)):
                         "dias_restantes": dias_restantes
                     })
         
-        # Ordena os prazos do mais perto para o mais longe
         prazos_lista.sort(key=lambda x: x["dias_restantes"])
-
-        # 3. Distribuição por Status (Para o Gráfico)
         status_distribuicao = {}
         for p in processos:
             status_distribuicao[p.status] = status_distribuicao.get(p.status, 0) + 1
@@ -505,7 +502,10 @@ def dados_dashboard(token: str = Depends(oauth2_scheme)):
             "concluidos": concluidos,
             "vencidos": prazos_vencidos,
             "proximos_prazos": prazos_lista,
-            "grafico_status": status_distribuicao
+            "grafico_status": status_distribuicao,
+            "total_honorarios": total_honorarios,
+            "total_recebido": total_recebido,
+            "total_pendente": total_pendente
         }
 
 @app.post("/ia/extrair-dados")
@@ -614,3 +614,38 @@ def chat_com_processo(
         except Exception as e:
             print(f"Erro na IA: {e}")
             raise HTTPException(status_code=500, detail="Erro ao processar resposta da IA.")
+
+@app.post("/financeiro")
+def criar_lancamento(lancamento: Financeiro, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        
+        processo = session.get(Processo, lancamento.processo_id)
+        if not processo or processo.usuario_id != usuario.id:
+            raise HTTPException(status_code=404, detail="Processo não encontrado")
+
+        lancamento.usuario_id = usuario.id
+
+        if isinstance(lancamento.data_pagamento, str):
+            lancamento.data_pagamento = date.fromisoformat(str(lancamento.data_pagamento))
+
+        session.add(lancamento)
+        session.commit()
+        session.refresh(lancamento)
+        return lancamento
+
+@app.get("/processos/{processo_id}/financeiro")
+def listar_financeiro_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        statement = select(Financeiro).where(
+            Financeiro.processo_id == processo_id, 
+            Financeiro.usuario_id == usuario.id
+        )
+
+        results = session.exec(statement).all()
+        return results
