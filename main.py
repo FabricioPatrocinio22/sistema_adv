@@ -9,6 +9,10 @@ import io
 import base64
 import json
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from apscheduler.schedulers.background import BackgroundScheduler
 from google import genai
 
 from ntpath import basename
@@ -664,3 +668,81 @@ def listar_financeiro_processo(processo_id: int, token: str = Depends(oauth2_sch
 
         results = session.exec(statement).all()
         return results
+
+def enviar_email_alerta(destinatario, processo_numero, cliente, dias_restantes):
+    remetente = os.getenv("EMAIL_USER")
+    senha = os.getenv("EMAIL_PASS")
+
+    if not remetente or not senha:
+        print("⚠️ Configuração de e-mail não encontrada. Pulei o envio.")
+        return
+
+    assunto = f"⚠️ ALERTA: Prazo vencendo - Processo {processo_numero}"
+    corpo = f"""
+    Olá, Doutor(a)!
+    
+    Este é um aviso automático do seu Sistema Jurídico.
+    
+    O processo do cliente **{cliente}** (Nº {processo_numero})
+    vence em **{dias_restantes} dias**.
+    
+    Por favor, verifique o sistema para tomar as providências.
+    """
+
+    msg = MIMEMultipart()
+    msg['From'] = remetente
+    msg['To'] = destinatario
+    msg['Subject'] = assunto
+    msg.attach(MIMEText(corpo, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(remetente, senha)
+        text = msg.as_string()
+        server.sendmail(remetente, destinatario, text)
+        server.quit()
+        print(f"📧 E-mail enviado para {destinatario}")
+    except Exception as e:
+        print(f"❌ Erro ao enviar e-mail: {e}")
+
+def verificar_prazos_diarios():
+    print("⏰ Robô iniciado: Verificando prazos...")
+
+    with Session(engine) as session:
+        hoje = date.today()
+        data_alvo = hoje + timedelta(days=2) # Daqui a 2 dias
+
+        processos = session.exec(select(Processo).where(Processo.data_prazo == data_alvo)).all()
+
+        if not processos:
+            print("✅ Nenhum prazo crítico para hoje.")
+            return
+
+        for p in processos:
+            # Precisamos do e-mail do advogado dono do processo
+            usuario = session.get(Usuario, p.usuario_id)
+            if usuario:
+                enviar_email_alerta(
+                    destinatario=usuario.email,
+                    processo_numero=p.numero,
+                    cliente=p.cliente,
+                    dias_restantes=2
+                )
+
+@app.on_event('startup')
+def iniciar_agendador():
+    scheduler = BackgroundScheduler()
+
+    # Configura para rodar todo dia às 08:00 da manhã (Horário do Servidor)
+    # Dica: O servidor do Render usa horário UTC (então 11:00 UTC = 08:00 Brasil)
+    scheduler.add_job(verificar_prazos_diarios, 'cron', hour=11, minute=0)
+
+    scheduler.start()
+    print("🤖 Robô de Prazos ativado e agendado!")
+
+# Rota só para testar se o e-mail chega (pode apagar depois)
+@app.get("/teste-email")
+def teste_email_manual():
+    verificar_prazos_diarios()
+    return {"mensagem": "Robô forçado manualmente! Verifique o console do Render e seu e-mail."}

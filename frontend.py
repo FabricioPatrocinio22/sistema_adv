@@ -149,7 +149,7 @@ else:
                         # O que falta receber
                         st.metric(
                             "⏳ A Receber", 
-                            f"R$ {dados.get('financeiro_pendente', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                            f"R$ {dados.get('total_honorarios', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                             delta_color="normal"
                         )
                         st.divider()
