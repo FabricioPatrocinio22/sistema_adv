@@ -94,7 +94,7 @@ else:
     
     # Barra Lateral (Menu)
     st.sidebar.title("Menu Advogado")
-    opcao = st.sidebar.radio("Ir para:", ["Dashboard", "Novo Processo", "Meus Processos", "Configurações"])
+    opcao = st.sidebar.radio("Ir para:", ["Dashboard", "Novo Processo", "Meus Processos", 'Meus Clientes', "Configurações"])
     
     if st.sidebar.button("Sair"):
         del st.session_state["token"]
@@ -501,6 +501,78 @@ else:
                         except:
                             st.error("Erro ao carregar financeiro.")
 
+    elif opcao == 'Meus Clientes':
+        st.header('👥 Carteira de Clientes')
+
+        tab_add, tab_list = st.tabs(['➕ Novo Cliente', '📋 Lista de Clientes'])
+
+        with tab_add:
+            with st.form('form_cliente'):
+                c1, c2 = st.columns(2)
+                nome = c1.text_input('Nome Completo *')
+                cpf = c2.text_input('CPF / CNPJ')
+
+                c3, c4 = st.columns(2)
+                email = c3.text_input('E-mail')
+                tel = c4.text_input('Telefone / Whatsapp')
+
+                obs = st.text_area('Observações')
+
+                if st.form_submit_button('Cadastrar Cliente'):
+                    if not nome:
+                        st.warning('O nome é obrigatório.')
+                    else:
+                        payload = {
+                            'nome': nome,
+                            'cpf_cnpj': cpf,
+                            'email': email,
+                            'telefone': tel,
+                            'observacoes': obs
+                        }
+                        try:
+                            res = requests.post(f'{BASE_URL}/clientes', json=payload, headers=headers)
+                            if res.status_code == 200:
+                                st.success(f'Cliente {nome} cadastrado!')
+                                time.sleep(5)
+                                st.rerun()
+                            else:
+                                st.error(f'Erro: {res.text}')
+                        except Exception as e:
+                            st.error(f'Erro de conexão: {e}')
+
+        with tab_list:
+            #Busca os dados no DB
+            try:
+                res = requests.get(f'{BASE_URL}/clientes', headers=headers)
+                if res.status_code == 200:
+                    clientes = res.json()
+
+                    if not clientes:
+                        st.info('Nenhum cliente cadastrado ainda')
+                    else:
+
+                        st.dataframe(
+                            clientes,
+                            column_config={
+                                'nome': 'Nome',
+                                'telefone': 'Contato',
+                                "email": "E-mail",
+                                "cpf_cnpj": "Documento",
+                                'data_cadastro': "Data de Cadastro",
+                                "id": None,          # Esconde o ID
+                                "usuario_id": None
+                            },
+                            width='stretch'
+                        )
+
+                        st.divider()
+
+                        st.caption('Para excluir, selecione o ID (visualize na tabela se precisar habilitar o ID)')
+
+                else:
+                    st.error('Erro ao carregar clientes.')
+            except:                   
+                st.error('Erro de conexão')
 
     elif opcao == "Configurações":
         st.header("⚙️ Configurações da Conta")

@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 
 # Importamos nossas próprias criações:
 from ia import analisar_documento
-from models import Processo, Usuario, UsuarioCreate, Financeiro
+from models import Processo, Usuario, UsuarioCreate, Financeiro, Cliente
 from database import engine, create_db_and_tables
 from security import criar_token_acesso, gerar_hash_senha, oauth2_scheme, verificar_senha, gerar_segredo_2fa, verificar_codigo_2fa
 import boto3
@@ -746,3 +746,54 @@ def iniciar_agendador():
 def teste_email_manual():
     verificar_prazos_diarios()
     return {"mensagem": "Robô forçado manualmente! Verifique o console do Render e seu e-mail."}
+
+@app.post('/clientes')
+def criar_cliente(cliente: Cliente, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        # Verifica se já existe cliente com esse CPF/CNPJ para esse usuário
+        if cliente.cpf_cnpj:
+            existente = session.exec(select(Cliente).where(
+                Cliente.usuario_id == usuario.id,
+                Cliente.cpf_cnpj == cliente.cpf_cnpj
+            )).first()
+            if existente:
+                raise HTTPException(status_code=400, detail="Cliente já cadastrado com este CPF.")
+
+        cliente.usuario_id = usuario.id
+        session.add(cliente)
+        session.commit()
+        session.refresh(cliente)
+        return cliente
+
+@app.get('/clientes')
+def listar_clientes(token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        # Retorna apenas os clientes deste advogado
+        return session.exec(select(Cliente).where(
+            Cliente.usuario_id == usuario.id
+        )).all()
+
+@app.delete('/clientes/{cliente_id}')
+def excluir_cliente(cliente_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        cliente = session.get(Cliente, cliente_id)
+
+        if not cliente or cliente.usuario_id != usuario.id:
+            raise HTTPException(status_code=403, detail="Não encontrado ou sem permissão.")
+
+        session.delete(cliente)
+        session.commit()
+        return {'mensagem': 'Cliente removido com sucesso!'}
+
+
+

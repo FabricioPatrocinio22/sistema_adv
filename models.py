@@ -1,3 +1,4 @@
+from tkinter import N
 from typing import Optional
 from sqlmodel import Field, SQLModel
 from datetime import date
@@ -36,3 +37,14 @@ class Financeiro(SQLModel, table=True):
     valor: float
     data_pagamento: date
     status: str
+
+class Cliente(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    usuario_id: int = Field(foreign_key="usuario.id")
+
+    nome: str
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cpf_cnpj: Optional[str] = None
+    data_cadastro: date = Field(default_factory=date.today)
+    observacoes: Optional[str] = None
