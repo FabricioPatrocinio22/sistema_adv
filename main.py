@@ -829,3 +829,23 @@ def obter_dossie_cliente(cliente_id: int, token: str = Depends(oauth2_scheme)):
             },
             "processos_lista": processos
         }
+
+
+
+# --- ROTA DE EMERGÊNCIA (RESET DO BANCO) ---
+@app.get("/reset-total-banco")
+def resetar_banco_de_dados():
+    # CUIDADO: Isso apaga tudo!
+    try:
+        SQLModel.metadata.drop_all(engine) # Apaga tabelas antigas
+        SQLModel.metadata.create_all(engine) # Cria as novas com colunas certas
+        
+        # Cria um usuário padrão para você não ficar trancado fora
+        with Session(engine) as session:
+            usuario = Usuario(email="admin@admin.com", senha_hash=gerar_hash_senha("1234"))
+            session.add(usuario)
+            session.commit()
+            
+        return {"mensagem": "Banco resetado com sucesso! Tabelas recriadas. Use admin@admin.com / 1234 para entrar."}
+    except Exception as e:
+        return {"erro": str(e)}
