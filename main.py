@@ -796,4 +796,36 @@ def excluir_cliente(cliente_id: int, token: str = Depends(oauth2_scheme)):
         return {'mensagem': 'Cliente removido com sucesso!'}
 
 
-
+@app.get("/clientes/{cliente_id}/dossie")
+def obter_dossie_cliente(cliente_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    with Session(engine) as session:
+        # 1. Pega os dados do cliente
+        cliente = session.get(Cliente, cliente_id)
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Cliente não encontrado")
+            
+        # 2. Busca todos os processos onde o "cliente" (texto) é igual ao nome deste cliente
+        # (Lembrando que no passo anterior amarramos o nome exato na criação do processo)
+        processos = session.exec(select(Processo).where(Processo.cliente == cliente.nome)).all()
+        
+        # 3. Busca o financeiro de todos esses processos
+        # (Logica avançada: pega ID dos processos -> busca financeiro)
+        ids_processos = [p.id for p in processos]
+        financeiro = session.exec(select(Financeiro).where(Financeiro.processo_id.in_(ids_processos))).all()
+        
+        # 4. Calcula Totais
+        total_honorarios = sum(f.valor for f in financeiro if f.tipo == "Honorários")
+        total_pago = sum(f.valor for f in financeiro if f.tipo == "Honorários" and f.status == "Pago")
+        total_devendo = total_honorarios - total_pago
+        
+        return {
+            "cliente": cliente,
+            "qtd_processos": len(processos),
+            "financeiro": {
+                "total": total_honorarios,
+                "pago": total_pago,
+                "devendo": total_devendo
+            },
+            "processos_lista": processos
+        }

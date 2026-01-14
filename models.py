@@ -17,6 +17,7 @@ class Processo(SQLModel, table=True):
     data_prazo: Optional[date] = None
     arquivo_pdf: Optional[str] = None
     resumo_ia: Optional[str] = Field(default=None, sa_type=Text)
+    tipo_acao: Optional[str] = None
 
 class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

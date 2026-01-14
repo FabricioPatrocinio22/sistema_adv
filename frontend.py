@@ -231,83 +231,113 @@ else:
         except Exception as e:
             st.error(f"Erro de conexão: {e}")
 
-   # --- TELA: NOVO PROCESSO (COM JANELA DE PESQUISA MODAL) ---
+   # --- TELA: NOVO PROCESSO (COM CRM + IA INTEGRADA) ---
     if opcao == "Novo Processo":
         st.header("⚖️ Cadastrar Novo Processo")
 
-        # 1. Inicializa a "memória" do cliente selecionado se não existir
+        # 1. INICIALIZA A MEMÓRIA DO FORMULÁRIO (Para os dados não sumirem)
+        if "form_dados" not in st.session_state:
+            st.session_state["form_dados"] = {
+                "numero": "", 
+                "contra_parte": "", 
+                "data_prazo": date.today() # Padrão hoje
+            }
+        
         if "cliente_selecionado" not in st.session_state:
             st.session_state["cliente_selecionado"] = None
 
-        # --- FUNÇÃO DA JANELA MODAL (POP-UP) ---
+        # --- 2. SELEÇÃO DE CLIENTE (MODAL DO CRM) ---
         @st.dialog("🔍 Pesquisar Cliente")
         def abrir_modal_clientes(dados_clientes):
-            st.write("Digite para filtrar e selecione o cliente abaixo:")
-            
-            # Cria lista de nomes para facilitar a busca
+            st.write("Selecione o cliente para vincular ao processo:")
             mapa_clientes = {c["nome"]: c for c in dados_clientes}
             nomes = list(mapa_clientes.keys())
-            
-            # Caixa de seleção com pesquisa embutida
-            nome_escolhido = st.selectbox("Digite o nome:", nomes, index=None, placeholder="Ex: Maria...")
+            nome_escolhido = st.selectbox("Cliente:", nomes, index=None, placeholder="Digite para buscar...")
             
             if nome_escolhido:
                 c_dados = mapa_clientes[nome_escolhido]
-                
-                # Mostra detalhes para confirmar que é a pessoa certa
-                st.info(f"📄 **CPF:** {c_dados.get('cpf_cnpj', 'N/A')} | 📞 **Tel:** {c_dados.get('telefone', 'N/A')}")
-                
-                if st.button("✅ Confirmar Seleção"):
-                    # Salva na memória e fecha a janela
+                st.info(f"📄 Documento: {c_dados.get('cpf_cnpj', 'N/A')}")
+                if st.button("✅ Confirmar Vínculo"):
                     st.session_state["cliente_selecionado"] = nome_escolhido
                     st.rerun()
 
-        # 2. BOTÃO PARA ABRIR A JANELA
-        # Se já tem cliente selecionado, mostra o nome e botão para trocar
+        # Botão para abrir o Modal
         if st.session_state["cliente_selecionado"]:
-            col_sel_1, col_sel_2 = st.columns([3, 1])
-            col_sel_1.success(f"👤 Cliente Selecionado: **{st.session_state['cliente_selecionado']}**")
-            if col_sel_2.button("🔄 Trocar"):
+            c1, c2 = st.columns([3, 1])
+            c1.success(f"👤 Cliente Vinculado: **{st.session_state['cliente_selecionado']}**")
+            if c2.button("🔄 Trocar"):
                 st.session_state["cliente_selecionado"] = None
                 st.rerun()
         else:
-            # Se não tem, mostra botão de busca
-            st.warning("Nenhum cliente selecionado.")
-            if st.button("🔍 Buscar Cliente no Banco"):
+            if st.button("🔍 Selecionar Cliente (Obrigatório)"):
                 try:
                     res = requests.get(f"{BASE_URL}/clientes", headers=headers)
                     if res.status_code == 200:
-                        dados = res.json()
-                        if dados:
-                            abrir_modal_clientes(dados)
-                        else:
-                            st.error("Nenhum cliente cadastrado no sistema.")
+                        abrir_modal_clientes(res.json())
                     else:
                         st.error("Erro ao buscar clientes.")
-                except Exception as e:
-                    st.error(f"Erro de conexão: {e}")
+                except:
+                    st.error("Erro de conexão.")
 
         st.divider()
 
-        # 3. O FORMULÁRIO DO PROCESSO
-        # Só libera o formulário se tiver um cliente na memória
+        # --- 3. ÁREA DE UPLOAD (IA) - SÓ APARECE SE TIVER CLIENTE ---
         if st.session_state["cliente_selecionado"]:
+            
+            st.markdown("#### 🤖 Preenchimento Automático (Gemini 3.0)")
+            uploaded_file = st.file_uploader("Arraste a Petição Inicial (PDF) para preencher os campos", type="pdf")
+            
+            if uploaded_file is not None:
+                if st.button("✨ Ler PDF com IA"):
+                    with st.spinner("Lendo documento..."):
+                        try:
+                            # Chama a SUA rota existente: /ia/extrair-dados
+                            files = {"arquivo": uploaded_file.getvalue()} # Note que o backend espera 'arquivo'
+                            res = requests.post(f"{BASE_URL}/ia/extrair-dados", files=files)
+                            
+                            if res.status_code == 200:
+                                dados_ia = res.json()
+                                
+                                # --- MAPEAMENTO (O Pulo do Gato) ---
+                                # O backend devolve "numero_processo", o form usa "numero"
+                                st.session_state["form_dados"]["numero"] = dados_ia.get("numero_processo", "")
+                                st.session_state["form_dados"]["contra_parte"] = dados_ia.get("contra_parte", "")
+                                
+                                # Tenta converter a data que vem da IA (YYYY-MM-DD) para objeto data
+                                data_str = dados_ia.get("data_prazo")
+                                if data_str:
+                                    try:
+                                        st.session_state["form_dados"]["data_prazo"] = datetime.strptime(data_str, "%Y-%m-%d").date()
+                                    except:
+                                        pass # Se falhar, mantém a data de hoje
+                                
+                                st.toast("Dados extraídos com sucesso!", icon="✅")
+                            else:
+                                st.error(f"Erro na IA: {res.text}")
+                        except Exception as e:
+                            st.error(f"Erro de conexão: {e}")
+
+            st.markdown("---")
+
+            # --- 4. FORMULÁRIO FINAL ---
             with st.form("form_processo"):
                 c1, c2 = st.columns(2)
-                contra_parte = c1.text_input("Contra-parte (Quem estamos processando?)")
-                numero = c2.text_input("Número do Processo (CNJ)")
+                
+                # Campos puxando do session_state (Preenchidos pela IA ou Vazios)
+                contra_parte = c1.text_input("Contra-parte", value=st.session_state["form_dados"]["contra_parte"])
+                numero = c2.text_input("Número do Processo", value=st.session_state["form_dados"]["numero"])
                 
                 c3, c4 = st.columns(2)
+                # Como sua IA atual não extrai o "Tipo de Ação", deixamos manual por enquanto
                 tipo_acao = c3.selectbox("Tipo de Ação", ["Cível", "Trabalhista", "Família", "Criminal", "Tributário"])
-                data_prazo = c4.date_input("Próximo Prazo/Audiência")
+                data_prazo = c4.date_input("Próximo Prazo", value=st.session_state["form_dados"]["data_prazo"])
                 
                 submit = st.form_submit_button("💾 Salvar Processo")
 
                 if submit:
                     payload = {
                         "numero": numero,
-                        # Pega o nome direto da memória segura
-                        "cliente": st.session_state["cliente_selecionado"], 
+                        "cliente": st.session_state["cliente_selecionado"], # Usa o cliente do Modal
                         "contra_parte": contra_parte,
                         "tipo_acao": tipo_acao,
                         "status": "Em Andamento",
@@ -317,20 +347,19 @@ else:
                     try:
                         res = requests.post(f"{BASE_URL}/processos", json=payload, headers=headers)
                         if res.status_code == 200:
-                            st.balloons() # Efeito visual de sucesso
+                            st.balloons()
                             st.success("Processo Criado com Sucesso!")
                             
-                            # Limpa a seleção para o próximo
-                            st.session_state["cliente_selecionado"] = None 
+                            # Reseta o formulário
+                            st.session_state["cliente_selecionado"] = None
+                            st.session_state["form_dados"] = {"numero": "", "contra_parte": "", "data_prazo": date.today()}
                             time.sleep(2)
                             st.rerun()
                         else:
                             st.error(f"Erro: {res.text}")
                     except Exception as e:
                         st.error(f"Erro de conexão: {e}")
-        else:
-            st.caption("👆 Selecione um cliente acima para liberar o formulário.")
-
+    
     # --- TELA 3: MEUS PROCESSOS E UPLOAD ---
     elif opcao == "Meus Processos":
             st.header("📂 Gestão e Análise")
@@ -389,14 +418,63 @@ else:
                                     else:
                                         st.error("Erro ao gerar link de download.")
 
-                        # Edição Rápida
+                        # Edição Rápida (AGORA COM BUSCA DE CLIENTE INTELIGENTE)
                         with col_edit:
                             with st.popover("✏️ Editar Dados"):
+                                st.write(f"Editando: **{p['numero']}**")
+                                
+                                # Lógica para carregar lista de clientes para o Selectbox
+                                try:
+                                    res_cli = requests.get(f"{BASE_URL}/clientes", headers=headers)
+                                    lista_clientes = res_cli.json() if res_cli.status_code == 200 else []
+                                    nomes_clientes = [c["nome"] for c in lista_clientes]
+                                except:
+                                    nomes_clientes = []
+
                                 with st.form(key=f"edit_{p['id']}"):
-                                    n_status = st.selectbox("Status", ["Em Andamento", "Concluído", "Suspenso"])
-                                    if st.form_submit_button("Salvar"):
-                                        requests.put(f"{BASE_URL}/processos/{p['id']}", json={"status": n_status}, headers=headers)
-                                        st.rerun()
+                                    # 1. Cliente (Dropdown em vez de texto solto)
+                                    # Tenta achar o índice atual do cliente para já vir selecionado
+                                    try:
+                                        idx_atual = nomes_clientes.index(p['cliente'])
+                                    except:
+                                        idx_atual = 0
+                                    
+                                    n_cliente = st.selectbox("Cliente Vinculado", nomes_clientes, index=idx_atual)
+                                    
+                                    # 2. Status
+                                    # Mapear índice do status atual
+                                    lista_status = ["Em Andamento", "Concluído", "Suspenso"]
+                                    try:
+                                        idx_status = lista_status.index(p['status'])
+                                    except:
+                                        idx_status = 0
+                                    n_status = st.selectbox("Status", lista_status, index=idx_status)
+
+                                    # 3. Tipo de Ação (Para corrigir os antigos "Não Informado")
+                                    lista_acoes = ["Cível", "Trabalhista", "Família", "Criminal", "Tributário"]
+                                    # Tenta achar o índice atual ou usa Cível como padrão
+                                    try:
+                                        idx_acao = lista_acoes.index(p.get('tipo_acao'))
+                                    except:
+                                        idx_acao = 0
+                                        
+                                    n_tipo_acao = st.selectbox("Tipo de Ação", lista_acoes, index=idx_acao)
+
+                                    if st.form_submit_button("💾 Salvar Alterações"):
+                                        payload_edit = {
+                                            "cliente": n_cliente,
+                                            "status": n_status,
+                                            "tipo_acao": n_tipo_acao
+                                        }
+                                        # Envia o PUT para o backend
+                                        res_edit = requests.put(f"{BASE_URL}/processos/{p['id']}", json=payload_edit, headers=headers)
+                                        
+                                        if res_edit.status_code == 200:
+                                            st.success("Atualizado!")
+                                            time.sleep(1)
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Erro: {res_edit.text}")
                         
                         # Excluir
                         with col_del:
@@ -622,43 +700,83 @@ else:
                             st.error(f"Erro de conexão: {e}")
 
         with tab_list:
-            #Busca os dados no DB
-            try:
-                res = requests.get(f'{BASE_URL}/clientes', headers=headers)
-                if res.status_code == 200:
-                    clientes = res.json()
-
-                    if not clientes:
-                        st.info('Nenhum cliente cadastrado ainda')
-                    else:
-                        dados_visuais = []
-                        for c in clientes:
-                            dados_visuais.append({
-                                "ID": c["id"],
-                                "Nome": c["nome"],
-                                
-                                # AQUI MUDOU: Usa a função inteligente que detecta se é CPF ou CNPJ
-                                "Documento": formatar_documento(c["cpf_cnpj"]), 
-                                
-                                "Contato": formatar_telefone(c["telefone"]),
-                                "E-mail": c["email"]
-                            })
-
-                        # Mostra a tabela bonita
-                        st.dataframe(
-                            dados_visuais, 
-                            hide_index=True,
-                            width='stretch'
-                        )
-                        # -----------------------------------
-                        
-                        st.divider()
-                        st.caption("Para excluir, anote o ID e use a ferramenta de administração (Em breve).")
-
+            # 1. Carrega a lista simples para o seletor
+            res = requests.get(f"{BASE_URL}/clientes", headers=headers)
+            if res.status_code == 200:
+                clientes = res.json()
+                
+                if not clientes:
+                    st.info("Nenhum cliente cadastrado.")
                 else:
-                    st.error('Erro ao carregar clientes.')
-            except:                   
-                st.error('Erro de conexão')
+                    # Seletor para escolher quem investigar
+                    opcoes = {c["nome"]: c["id"] for c in clientes}
+                    escolhido_nome = st.selectbox("📂 Selecione um cliente para ver o Dossiê:", [""] + list(opcoes.keys()))
+                    
+                    st.divider()
+
+                    if escolhido_nome:
+                        id_cliente = opcoes[escolhido_nome]
+                        
+                        # Chama a rota inteligente que criamos (Dossiê)
+                        try:
+                            res_dossie = requests.get(f"{BASE_URL}/clientes/{id_cliente}/dossie", headers=headers)
+                            if res_dossie.status_code == 200:
+                                dados = res_dossie.json()
+                                cli = dados["cliente"]
+                                fin = dados["financeiro"]
+                                procs = dados["processos_lista"]
+                                
+                                # --- CABEÇALHO DO CLIENTE ---
+                                col_perfil, col_kpi = st.columns([1, 2])
+                                
+                                with col_perfil:
+                                    st.subheader(cli["nome"])
+                                    st.caption(f"Desde: {cli['data_cadastro']}")
+                                    st.write(f"📞 **Tel:** {formatar_telefone(cli.get('telefone', ''))}")
+                                    st.write(f"📧 **Email:** {cli.get('email', '-')}")
+                                    st.write(f"🆔 **Doc:** {formatar_documento(cli.get('cpf_cnpj', ''))}")
+                                    if cli.get("observacoes"):
+                                        st.info(cli["observacoes"])
+                                
+                                with col_kpi:
+                                    # Cards Financeiros do Cliente
+                                    k1, k2, k3 = st.columns(3)
+                                    k1.metric("Processos", dados["qtd_processos"])
+                                    k2.metric("Honorários Totais", f"R$ {fin['total']:,.2f}")
+                                    k3.metric("Em Aberto (Deve)", f"R$ {fin['devendo']:,.2f}", delta_color="inverse")
+                                
+                                st.divider()
+                                
+                                # --- LISTA DE PROCESSOS DELE ---
+                                st.subheader(f"Processos de {escolhido_nome}")
+                                if procs:
+                                    # Tabela simplificada dos processos dele
+                                    lista_proc_visual = []
+                                    for p in procs:
+                                        lista_proc_visual.append({
+                                            "Número": p.get("numero", "-"), # Usa .get para garantir
+                                            
+                                            # AQUI ERA O ERRO: Trocamos ["tipo_acao"] por .get(...)
+                                            "Ação": p.get("tipo_acao", "Não Informado"), 
+                                            
+                                            "Status": p.get("status", "-"),
+                                            "Próx. Prazo": p.get("data_prazo", "-")
+                                        })
+                                    st.dataframe(lista_proc_visual, width='stretch')
+                                else:
+                                    st.warning("Este cliente ainda não tem processos cadastrados.")
+                                    
+                            else:
+                                st.error("Erro ao carregar dossiê.")
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+                    else:
+                        # Se não selecionou ninguém, mostra a tabela geral resumida
+                        st.caption("Visão Geral da Carteira:")
+                        df_clientes = [{"Nome": c["nome"], "Telefone": formatar_telefone(c["telefone"])} for c in clientes]
+                        st.dataframe(df_clientes, width='stretch')
+            else:
+                st.error("Erro ao conectar.")
 
     elif opcao == "Configurações":
         st.header("⚙️ Configurações da Conta")
