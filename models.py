@@ -1,4 +1,3 @@
-from tkinter import N
 from typing import Optional
 from sqlmodel import Field, SQLModel
 from datetime import date
