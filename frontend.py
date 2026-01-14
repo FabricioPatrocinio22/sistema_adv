@@ -4,6 +4,7 @@ from datetime import date
 import os
 import base64
 import time
+import re
 
 # Endereço do seu Backend (FastAPI)
 BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
@@ -33,6 +34,33 @@ def fazer_login(email, senha, codigo_2fa=None):
         st.error(f"Erro de conexão: {e}")
         return None
 
+def limpar_numero(valor):
+    """Remove tudo que não for dígito (pontos, traços, parênteses)"""
+    if not valor:
+        return ""
+    return re.sub(r'\D', '', str(valor))
+
+def formatar_documento(valor):
+    """Formata CPF ou CNPJ dependendo do tamanho"""
+    v = limpar_numero(valor)
+    
+    if len(v) == 11: # CPF
+        return f"{v[:3]}.{v[3:6]}.{v[6:9]}-{v[9:]}"
+    elif len(v) == 14: # CNPJ
+        return f"{v[:2]}.{v[2:5]}.{v[5:8]}/{v[8:12]}-{v[12:]}"
+    
+    return valor # Se não for nem um nem outro, retorna normal
+
+def formatar_telefone(valor):
+    """Transforma 11999998888 em (11) 99999-8888"""
+    v = limpar_numero(valor)
+    if len(v) < 10 or len(v) > 11:
+        return valor
+    
+    if len(v) == 11: # Celular (com 9 dígitos)
+        return f"({v[:2]}) {v[2:7]}-{v[7:]}"
+    else: # Fixo (com 8 dígitos)
+        return f"({v[:2]}) {v[2:6]}-{v[6:]}"
 # --- TELA DE LOGIN ---
 if "token" not in st.session_state:
     st.title("⚖️ Acesso Restrito")
@@ -203,95 +231,105 @@ else:
         except Exception as e:
             st.error(f"Erro de conexão: {e}")
 
-    # --- TELA 2: NOVO PROCESSO ---
-    elif opcao == "Novo Processo":
-        st.header("📝 Cadastrar Processo")
+   # --- TELA: NOVO PROCESSO (COM JANELA DE PESQUISA MODAL) ---
+    if opcao == "Novo Processo":
+        st.header("⚖️ Cadastrar Novo Processo")
 
-        # 1. Inicializa o estado se não existir
-        if "form_numero" not in st.session_state: st.session_state["form_numero"] = ""
-        if "form_cliente" not in st.session_state: st.session_state["form_cliente"] = ""
-        if "form_parte" not in st.session_state: st.session_state["form_parte"] = ""
-        if "form_data" not in st.session_state: st.session_state["form_data"] = date.today()
+        # 1. Inicializa a "memória" do cliente selecionado se não existir
+        if "cliente_selecionado" not in st.session_state:
+            st.session_state["cliente_selecionado"] = None
 
-        # --- ÁREA DE UPLOAD ---
-        with st.expander("✨ Preenchimento Automático com IA (Opcional)", expanded=True):
-            st.caption("Suba o PDF inicial para a IA tentar ler os dados.")
-            arquivo_pdf = st.file_uploader("Arraste o PDF aqui", type="pdf", key="upload_inicial")
+        # --- FUNÇÃO DA JANELA MODAL (POP-UP) ---
+        @st.dialog("🔍 Pesquisar Cliente")
+        def abrir_modal_clientes(dados_clientes):
+            st.write("Digite para filtrar e selecione o cliente abaixo:")
+            
+            # Cria lista de nomes para facilitar a busca
+            mapa_clientes = {c["nome"]: c for c in dados_clientes}
+            nomes = list(mapa_clientes.keys())
+            
+            # Caixa de seleção com pesquisa embutida
+            nome_escolhido = st.selectbox("Digite o nome:", nomes, index=None, placeholder="Ex: Maria...")
+            
+            if nome_escolhido:
+                c_dados = mapa_clientes[nome_escolhido]
+                
+                # Mostra detalhes para confirmar que é a pessoa certa
+                st.info(f"📄 **CPF:** {c_dados.get('cpf_cnpj', 'N/A')} | 📞 **Tel:** {c_dados.get('telefone', 'N/A')}")
+                
+                if st.button("✅ Confirmar Seleção"):
+                    # Salva na memória e fecha a janela
+                    st.session_state["cliente_selecionado"] = nome_escolhido
+                    st.rerun()
 
-            if arquivo_pdf is not None:
-                if st.button("🪄 Extrair Dados do PDF"):
-                    with st.spinner("A IA está lendo o documento..."):
-                        files = {"arquivo": arquivo_pdf.getvalue()}
-                        try:
-                            res = requests.post(f"{BASE_URL}/ia/extrair-dados", files=files, headers=headers)
-                            
-                            if res.status_code == 200:
-                                dados_ia = res.json()
-                                
-                                # Atualiza Textos
-                                st.session_state["form_numero"] = dados_ia.get("numero_processo") or ""
-                                st.session_state["form_cliente"] = dados_ia.get("cliente") or ""
-                                st.session_state["form_parte"] = dados_ia.get("contra_parte") or ""
-                                
-                                # --- CORREÇÃO DA DATA AQUI ---
-                                raw_date = dados_ia.get("data_prazo")
-                                try:
-                                    # Tenta converter string ISO (2025-01-01) para objeto Date
-                                    if raw_date:
-                                        nova_data = date.fromisoformat(raw_date)
-                                    else:
-                                        nova_data = date.today()
-                                except ValueError:
-                                    # Se a IA mandou data mal formatada, usa hoje
-                                    nova_data = date.today()
-                                
-                                st.session_state["form_data"] = nova_data
-                                st.success("Dados extraídos!")
-                                st.rerun() # Força recarregar a página para exibir os dados novos
-                            else:
-                                st.error("Erro ao ler o PDF.")
-                        except Exception as e:
-                            st.error(f"Erro de conexão: {e}")
+        # 2. BOTÃO PARA ABRIR A JANELA
+        # Se já tem cliente selecionado, mostra o nome e botão para trocar
+        if st.session_state["cliente_selecionado"]:
+            col_sel_1, col_sel_2 = st.columns([3, 1])
+            col_sel_1.success(f"👤 Cliente Selecionado: **{st.session_state['cliente_selecionado']}**")
+            if col_sel_2.button("🔄 Trocar"):
+                st.session_state["cliente_selecionado"] = None
+                st.rerun()
+        else:
+            # Se não tem, mostra botão de busca
+            st.warning("Nenhum cliente selecionado.")
+            if st.button("🔍 Buscar Cliente no Banco"):
+                try:
+                    res = requests.get(f"{BASE_URL}/clientes", headers=headers)
+                    if res.status_code == 200:
+                        dados = res.json()
+                        if dados:
+                            abrir_modal_clientes(dados)
+                        else:
+                            st.error("Nenhum cliente cadastrado no sistema.")
+                    else:
+                        st.error("Erro ao buscar clientes.")
+                except Exception as e:
+                    st.error(f"Erro de conexão: {e}")
 
         st.divider()
 
-        # --- O FORMULÁRIO ---
-        with st.form("form_processo"):
-            
-            # Garante que 'value' seja sempre um objeto data, nunca string
-            valor_data_seguro = st.session_state["form_data"]
-            if not isinstance(valor_data_seguro, date):
-                valor_data_seguro = date.today()
-
-            numero = st.text_input("Número do Processo", value=st.session_state["form_numero"])
-            cliente = st.text_input("Nome do Cliente", value=st.session_state["form_cliente"])
-            parte = st.text_input("Contra-parte", value=st.session_state["form_parte"])
-            data_prazo = st.date_input("Data do Prazo Fatal", value=valor_data_seguro)
-            
-            enviar = st.form_submit_button("Salvar Processo")
-            
-            if enviar:
-                payload = {
-                    "numero": numero,
-                    "cliente": cliente,
-                    "contra_parte": parte,
-                    "data_prazo": str(data_prazo)
-                }
-                res = requests.post(f"{BASE_URL}/processos", json=payload, headers=headers)
+        # 3. O FORMULÁRIO DO PROCESSO
+        # Só libera o formulário se tiver um cliente na memória
+        if st.session_state["cliente_selecionado"]:
+            with st.form("form_processo"):
+                c1, c2 = st.columns(2)
+                contra_parte = c1.text_input("Contra-parte (Quem estamos processando?)")
+                numero = c2.text_input("Número do Processo (CNJ)")
                 
-                if res.status_code == 200:
-                    st.success(f"Processo {numero} criado com sucesso!")
+                c3, c4 = st.columns(2)
+                tipo_acao = c3.selectbox("Tipo de Ação", ["Cível", "Trabalhista", "Família", "Criminal", "Tributário"])
+                data_prazo = c4.date_input("Próximo Prazo/Audiência")
+                
+                submit = st.form_submit_button("💾 Salvar Processo")
+
+                if submit:
+                    payload = {
+                        "numero": numero,
+                        # Pega o nome direto da memória segura
+                        "cliente": st.session_state["cliente_selecionado"], 
+                        "contra_parte": contra_parte,
+                        "tipo_acao": tipo_acao,
+                        "status": "Em Andamento",
+                        "data_prazo": str(data_prazo)
+                    }
                     
-                    # --- LIMPEZA DE DADOS APÓS SALVAR ---
-                    st.session_state["form_numero"] = ""
-                    st.session_state["form_cliente"] = ""
-                    st.session_state["form_parte"] = ""
-                    st.session_state["form_data"] = date.today() # Reseta a data para hoje
-                    
-                    # Opcional: sleep breve e rerun para dar sensação de atualização
-                    st.rerun()
-                else:
-                    st.error(f"Erro: {res.text}")
+                    try:
+                        res = requests.post(f"{BASE_URL}/processos", json=payload, headers=headers)
+                        if res.status_code == 200:
+                            st.balloons() # Efeito visual de sucesso
+                            st.success("Processo Criado com Sucesso!")
+                            
+                            # Limpa a seleção para o próximo
+                            st.session_state["cliente_selecionado"] = None 
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error(f"Erro: {res.text}")
+                    except Exception as e:
+                        st.error(f"Erro de conexão: {e}")
+        else:
+            st.caption("👆 Selecione um cliente acima para liberar o formulário.")
 
     # --- TELA 3: MEUS PROCESSOS E UPLOAD ---
     elif opcao == "Meus Processos":
@@ -507,38 +545,81 @@ else:
         tab_add, tab_list = st.tabs(['➕ Novo Cliente', '📋 Lista de Clientes'])
 
         with tab_add:
-            with st.form('form_cliente'):
+            st.markdown("ℹ️ *Digite apenas os números nos campos de documento e telefone.*")
+            
+            # 1. O RADIO BUTTON FICA FORA DO FORMULÁRIO (Para atualizar na hora)
+            tipo_pessoa = st.radio(
+                "Tipo de Cliente", 
+                ["Pessoa Física (CPF)", "Pessoa Jurídica (CNPJ)"], 
+                horizontal=True
+            )
+
+            # 2. CALCULA AS VARIÁVEIS ANTES DE CRIAR O FORMULÁRIO
+            if tipo_pessoa == "Pessoa Física (CPF)":
+                doc_label = "CPF (11 dígitos)"
+                doc_max = 11
+                doc_placeholder = "12345678900"
+                doc_key = "input_cpf"
+            else:
+                doc_label = "CNPJ (14 dígitos)"
+                doc_max = 14
+                doc_placeholder = "12345678000199"
+                doc_key = "input_cnpj"
+            
+            with st.form("form_cliente"):
+                
                 c1, c2 = st.columns(2)
-                nome = c1.text_input('Nome Completo *')
-                cpf = c2.text_input('CPF / CNPJ')
+                nome = c1.text_input("Nome / Razão Social *")
 
+                documento = c2.text_input(doc_label, max_chars=doc_max, placeholder=doc_placeholder, key=doc_key)
+                # --------------------------------
+                
                 c3, c4 = st.columns(2)
-                email = c3.text_input('E-mail')
-                tel = c4.text_input('Telefone / Whatsapp')
-
-                obs = st.text_area('Observações')
-
-                if st.form_submit_button('Cadastrar Cliente'):
+                email = c3.text_input("E-mail")
+                tel = c4.text_input("Celular/Telefone (DDD + Números)", max_chars=11, placeholder='35988887777')
+                
+                obs = st.text_area("Observações")
+                
+                if st.form_submit_button("Cadastrar Cliente"):
+                    # Validações
+                    erro = False
+                    
                     if not nome:
-                        st.warning('O nome é obrigatório.')
-                    else:
+                        st.warning("O Nome/Razão Social é obrigatório.")
+                        erro = True
+                    
+                    # Valida se o documento é numérico e se tem o tamanho certo
+                    if documento:
+                        if not documento.isnumeric():
+                            st.error("Erro: O documento deve conter APENAS números.")
+                            erro = True
+                        elif len(documento) != doc_max:
+                            st.error(f"Erro: O {doc_label} deve ter exatamente {doc_max} números.")
+                            erro = True
+
+                    if tel and not tel.isnumeric():
+                        st.error("Erro: O telefone deve conter APENAS números.")
+                        erro = True
+
+                    if not erro:
                         payload = {
-                            'nome': nome,
-                            'cpf_cnpj': cpf,
-                            'email': email,
-                            'telefone': tel,
-                            'observacoes': obs
+                            "nome": nome,
+                            "cpf_cnpj": documento,
+                            "email": email,
+                            "telefone": tel,
+                            "observacoes": obs
                         }
+                        
                         try:
-                            res = requests.post(f'{BASE_URL}/clientes', json=payload, headers=headers)
+                            res = requests.post(f"{BASE_URL}/clientes", json=payload, headers=headers)
                             if res.status_code == 200:
-                                st.success(f'Cliente {nome} cadastrado!')
-                                time.sleep(5)
+                                st.success(f"Cliente cadastrado com sucesso!")
+                                time.sleep(1)
                                 st.rerun()
                             else:
-                                st.error(f'Erro: {res.text}')
+                                st.error(f"Erro no servidor: {res.text}")
                         except Exception as e:
-                            st.error(f'Erro de conexão: {e}')
+                            st.error(f"Erro de conexão: {e}")
 
         with tab_list:
             #Busca os dados no DB
@@ -550,24 +631,29 @@ else:
                     if not clientes:
                         st.info('Nenhum cliente cadastrado ainda')
                     else:
+                        dados_visuais = []
+                        for c in clientes:
+                            dados_visuais.append({
+                                "ID": c["id"],
+                                "Nome": c["nome"],
+                                
+                                # AQUI MUDOU: Usa a função inteligente que detecta se é CPF ou CNPJ
+                                "Documento": formatar_documento(c["cpf_cnpj"]), 
+                                
+                                "Contato": formatar_telefone(c["telefone"]),
+                                "E-mail": c["email"]
+                            })
 
+                        # Mostra a tabela bonita
                         st.dataframe(
-                            clientes,
-                            column_config={
-                                'nome': 'Nome',
-                                'telefone': 'Contato',
-                                "email": "E-mail",
-                                "cpf_cnpj": "Documento",
-                                'data_cadastro': "Data de Cadastro",
-                                "id": None,          # Esconde o ID
-                                "usuario_id": None
-                            },
+                            dados_visuais, 
+                            hide_index=True,
                             width='stretch'
                         )
-
+                        # -----------------------------------
+                        
                         st.divider()
-
-                        st.caption('Para excluir, selecione o ID (visualize na tabela se precisar habilitar o ID)')
+                        st.caption("Para excluir, anote o ID e use a ferramenta de administração (Em breve).")
 
                 else:
                     st.error('Erro ao carregar clientes.')
