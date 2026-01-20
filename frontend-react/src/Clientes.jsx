@@ -32,7 +32,7 @@ function Clientes() {
   const fetchClientes = async () => {
     try {
       const token = localStorage.getItem('token')
-      const response = await axios.get('http://127.0.0.1:8000/clientes', {
+      const response = await axios.get('${import.meta.env.VITE_API_URL}/clientes', {
         headers: { Authorization: `Bearer ${token}` }
       })
       setLista(response.data)
@@ -57,7 +57,7 @@ function Clientes() {
     setSaving(true)
     try {
         const token = localStorage.getItem('token')
-        await axios.post('http://127.0.0.1:8000/clientes', novoCliente, {
+        await axios.post('${import.meta.env.VITE_API_URL}/clientes', novoCliente, {
             headers: { Authorization: `Bearer ${token}` }
         })
 
@@ -80,7 +80,7 @@ function Clientes() {
     if(!window.confirm("Excluir este cliente?")) return;
     try {
         const token = localStorage.getItem('token')
-        await axios.delete(`http://127.0.0.1:8000/clientes/${id}`, {
+        await axios.delete(`${import.meta.env.VITE_API_URL}/clientes/${id}`, {
             headers: { Authorization: `Bearer ${token}` }
         })
         toast({ title: 'Cliente removido', status: 'success' })

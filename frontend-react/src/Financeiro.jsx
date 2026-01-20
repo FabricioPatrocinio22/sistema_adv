@@ -37,7 +37,7 @@ function Financeiro() {
       const headers = { Authorization: `Bearer ${token}` }
       
       // Vamos assumir que existe essa rota no Python (se não tiver, criamos já já)
-      const response = await axios.get('http://127.0.0.1:8000/pagamentos', { headers })
+      const response = await axios.get('${import.meta.env.VITE_API_URL}/pagamentos', { headers })
       
       setLista(response.data)
       calcularResumo(response.data)
@@ -90,7 +90,7 @@ function Financeiro() {
             valor: parseFloat(valorLimpo) // Converte pra número
         }
 
-        await axios.post('http://127.0.0.1:8000/pagamentos', payload, {
+        await axios.post('${import.meta.env.VITE_API_URL}/pagamentos', payload, {
             headers: { Authorization: `Bearer ${token}` }
         })
 
@@ -110,7 +110,7 @@ function Financeiro() {
     if(!window.confirm("Apagar este registro?")) return;
     try {
         const token = localStorage.getItem('token')
-        await axios.delete(`http://127.0.0.1:8000/pagamentos/${id}`, {
+        await axios.delete(`${import.meta.env.VITE_API_URL}/pagamentos/${id}`, {
              headers: { Authorization: `Bearer ${token}` }
         })
         fetchData()

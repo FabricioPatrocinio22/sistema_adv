@@ -7,7 +7,7 @@ import time
 import re
 
 # Endereço do seu Backend (FastAPI)
-BASE_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
+BASE_URL = os.environ.get("BACKEND_URL", "${import.meta.env.VITE_API_URL}")
 
 # Configuração da Página
 st.set_page_config(page_title="Sistema Jurídico", page_icon="⚖️")

@@ -32,7 +32,7 @@ function Login() {
       formData.append('password', senha)
 
       // Ajuste a porta se necessário
-      const response = await axios.post('http://127.0.0.1:8000/token', formData)
+      const response = await axios.post('${import.meta.env.VITE_API_URL}/token', formData)
       
       localStorage.setItem('token', response.data.access_token)
       toast({ title: 'Bem-vindo(a)!', status: 'success', duration: 2000 })
@@ -64,7 +64,7 @@ function Login() {
         senha: senha
       }
 
-      await axios.post('http://127.0.0.1:8000/usuarios', payload)
+      await axios.post('${import.meta.env.VITE_API_URL}/usuarios', payload)
       
       toast({ 
         title: 'Conta criada!', 

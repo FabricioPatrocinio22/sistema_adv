@@ -48,9 +48,9 @@ function Processos() {
     try {
       const token = localStorage.getItem('token')
       const headers = { Authorization: `Bearer ${token}` }
-      const resProc = await axios.get('http://127.0.0.1:8000/processos', { headers })
+      const resProc = await axios.get('${import.meta.env.VITE_API_URL}/processos', { headers })
       setLista(resProc.data)
-      const resCli = await axios.get('http://127.0.0.1:8000/clientes', { headers })
+      const resCli = await axios.get('${import.meta.env.VITE_API_URL}/clientes', { headers })
       setClientes(resCli.data)
     } catch (error) {
       console.log(error)
@@ -76,7 +76,7 @@ function Processos() {
     formData.append('arquivo', file)
 
     try {
-        const response = await axios.post('http://127.0.0.1:8000/ia/extrair-dados', formData)
+        const response = await axios.post('${import.meta.env.VITE_API_URL}/ia/extrair-dados', formData)
         const dados = response.data
 
         setNovoProcesso({
@@ -101,7 +101,7 @@ function Processos() {
     try {
         const token = localStorage.getItem('token')
         const payload = { ...novoProcesso, status: 'Em Andamento' }
-        await axios.post('http://127.0.0.1:8000/processos', payload, {
+        await axios.post('${import.meta.env.VITE_API_URL}/processos', payload, {
             headers: { Authorization: `Bearer ${token}` }
         })
         toast({ title: 'Processo criado!', status: 'success' })
@@ -119,7 +119,7 @@ function Processos() {
     if(!window.confirm("Excluir?")) return;
     try {
         const token = localStorage.getItem('token')
-        await axios.delete(`http://127.0.0.1:8000/processos/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+        await axios.delete(`${import.meta.env.VITE_API_URL}/processos/${id}`, { headers: { Authorization: `Bearer ${token}` } })
         fetchData()
         toast({ title: 'Excluído', status: 'success' })
     } catch (error) { toast({ title: 'Erro', status: 'error' }) }
@@ -143,7 +143,7 @@ function Processos() {
     formData.append('arquivo', file)
     try {
         const token = localStorage.getItem('token')
-        await axios.post(`http://127.0.0.1:8000/processos/${processoSelecionado.id}/anexo`, formData, {
+        await axios.post(`${import.meta.env.VITE_API_URL}/processos/${processoSelecionado.id}/anexo`, formData, {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' }
         })
         toast({ title: 'PDF Enviado!', status: 'success' })
@@ -156,7 +156,7 @@ function Processos() {
     setLoadingIA(true)
     try {
         const token = localStorage.getItem('token')
-        const response = await axios.post(`http://127.0.0.1:8000/processos/${processoSelecionado.id}/analise-ia`, {}, {
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/processos/${processoSelecionado.id}/analise-ia`, {}, {
             headers: { Authorization: `Bearer ${token}` }
         })
         setResumoIA(response.data.resumo)
@@ -177,7 +177,7 @@ function Processos() {
     try {
         const token = localStorage.getItem('token')
         // 2. Manda pro Python
-        const response = await axios.post(`http://127.0.0.1:8000/processos/${processoSelecionado.id}/chat`, 
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/processos/${processoSelecionado.id}/chat`, 
             { pergunta: novaMensagemUsuario.text }, 
             { headers: { Authorization: `Bearer ${token}` } }
         )

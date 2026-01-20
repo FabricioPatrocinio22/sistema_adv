@@ -156,7 +156,7 @@ Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 SECRET_KEY=sua_chave_secreta_super_segura_aqui
 
 # Backend
-BACKEND_URL=http://127.0.0.1:8000
+BACKEND_URL=${import.meta.env.VITE_API_URL}
 
 # AWS S3 (para armazenamento de arquivos na nuvem)
 AWS_ACCESS_KEY_ID=sua_access_key_aws
