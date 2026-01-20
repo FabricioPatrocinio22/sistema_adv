@@ -6,6 +6,9 @@ import {
 } from '@chakra-ui/react'
 import axios from 'axios'
 import Dashboard from './Dashboard'
+import Processos from './Processos'
+import Clientes from './Clientes'
+import Financeiro from './Financeiro' // <--- 1. Importa
 
 function Login() {
   // Estados dos campos
@@ -165,6 +168,9 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/processos" element={<Processos />} />
+        <Route path="/clientes" element={<Clientes />} />
+        <Route path="/financeiro" element={<Financeiro />} />
       </Routes>
     </BrowserRouter>
   )

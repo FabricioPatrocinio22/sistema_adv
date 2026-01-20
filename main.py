@@ -634,26 +634,6 @@ def chat_com_processo(
             print(f"Erro na IA: {e}")
             raise HTTPException(status_code=500, detail="Erro ao processar resposta da IA.")
 
-@app.post("/financeiro")
-def criar_lancamento(lancamento: Financeiro, token: str = Depends(oauth2_scheme)):
-    email_user = verificar_token(token)
-    with Session(engine) as session:
-        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
-        
-        processo = session.get(Processo, lancamento.processo_id)
-        if not processo or processo.usuario_id != usuario.id:
-            raise HTTPException(status_code=404, detail="Processo não encontrado")
-
-        lancamento.usuario_id = usuario.id
-
-        if isinstance(lancamento.data_pagamento, str):
-            lancamento.data_pagamento = date.fromisoformat(str(lancamento.data_pagamento))
-
-        session.add(lancamento)
-        session.commit()
-        session.refresh(lancamento)
-        return lancamento
-
 @app.get("/processos/{processo_id}/financeiro")
 def listar_financeiro_processo(processo_id: int, token: str = Depends(oauth2_scheme)):
     email_user = verificar_token(token)
@@ -831,7 +811,6 @@ def obter_dossie_cliente(cliente_id: int, token: str = Depends(oauth2_scheme)):
         }
 
 
-
 # --- ROTA DE EMERGÊNCIA (RESET DO BANCO) ---
 @app.get("/reset-total-banco")
 def resetar_banco_de_dados():
@@ -849,3 +828,74 @@ def resetar_banco_de_dados():
         return {"mensagem": "Banco resetado com sucesso! Tabelas recriadas. Use admin@admin.com / 1234 para entrar."}
     except Exception as e:
         return {"erro": str(e)}
+
+
+# --- ROTAS FINANCEIRAS CORRIGIDAS (Substitua as antigas /financeiro por estas) ---
+
+@app.get("/pagamentos")
+def listar_pagamentos_geral(token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+
+        # Busca TUDO que é desse usuário (seja vinculado a processo ou não)
+        statement = select(Financeiro).where(Financeiro.usuario_id == usuario.id)
+        results = session.exec(statement).all()
+        return results
+
+@app.post("/pagamentos")
+def criar_pagamento(lancamento: Financeiro, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        
+        # Vincula ao usuário logado
+        lancamento.usuario_id = usuario.id
+
+        # LÓGICA INTELIGENTE DE PROCESSO:
+        # Só tentamos buscar o processo SE um ID for enviado.
+        # Se for 0, None ou não enviado, tratamos como despesa avulsa.
+        if lancamento.processo_id:
+            processo = session.get(Processo, lancamento.processo_id)
+            if not processo or processo.usuario_id != usuario.id:
+                # Se enviou um ID de processo que não existe ou não é dele, barramos.
+                raise HTTPException(status_code=404, detail="Processo informado não encontrado")
+        else:
+            # Garante que grave como NULL no banco se não tiver processo
+            lancamento.processo_id = None
+
+        # Tratamento de Data (String -> Date)
+        if isinstance(lancamento.data_pagamento, str):
+            try:
+                lancamento.data_pagamento = date.fromisoformat(str(lancamento.data_pagamento))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Data inválida")
+
+        session.add(lancamento)
+        session.commit()
+        session.refresh(lancamento)
+        return lancamento
+
+@app.delete("/pagamentos/{pagamento_id}")
+def deletar_pagamento(pagamento_id: int, token: str = Depends(oauth2_scheme)):
+    email_user = verificar_token(token)
+    
+    with Session(engine) as session:
+        usuario = session.exec(select(Usuario).where(Usuario.email == email_user)).first()
+        
+        # Busca o pagamento garantindo que pertence ao usuário
+        pagamento = session.exec(select(Financeiro).where(
+            Financeiro.id == pagamento_id, 
+            Financeiro.usuario_id == usuario.id
+        )).first()
+
+        if not pagamento:
+            raise HTTPException(status_code=404, detail="Lançamento não encontrado")
+        
+        session.delete(pagamento)
+        session.commit()
+        return {"mensagem": "Deletado com sucesso"}
+
+        

@@ -19,6 +19,7 @@ class Processo(SQLModel, table=True):
     resumo_ia: Optional[str] = Field(default=None, sa_type=Text)
     tipo_acao: Optional[str] = None
 
+
 class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True)

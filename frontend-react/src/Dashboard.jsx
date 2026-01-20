@@ -6,47 +6,7 @@ import {
 import { FiHome, FiFileText, FiUsers, FiDollarSign, FiLogOut } from 'react-icons/fi' // Ícones bonitos
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-
-// --- COMPONENTE DO MENU LATERAL (SIDEBAR) ---
-const Sidebar = ({ active, onLogout }) => {
-  const menuItems = [
-    { name: 'Visão Geral', icon: FiHome, id: 'dashboard' },
-    { name: 'Meus Processos', icon: FiFileText, id: 'processos' },
-    { name: 'Clientes', icon: FiUsers, id: 'clientes' },
-    { name: 'Financeiro', icon: FiDollarSign, id: 'financeiro' },
-  ]
-
-  return (
-    <Box w="250px" bg="white" h="100vh" borderRight="1px" borderColor="gray.200" pos="fixed" left={0} top={0}>
-      <VStack spacing={8} align="stretch" p={6}>
-        <Heading size="md" color="blue.600">⚖️ Advogado SaaS</Heading>
-        
-        <VStack spacing={2} align="stretch">
-          {menuItems.map((item) => (
-            <HStack 
-              key={item.id} 
-              p={3} 
-              borderRadius="md" 
-              bg={active === item.id ? "blue.50" : "transparent"} 
-              color={active === item.id ? "blue.600" : "gray.600"}
-              cursor="pointer"
-              _hover={{ bg: "gray.50" }}
-            >
-              <Icon as={item.icon} />
-              <Text fontWeight={active === item.id ? "bold" : "normal"}>{item.name}</Text>
-            </HStack>
-          ))}
-        </VStack>
-
-        <Divider />
-        
-        <Button leftIcon={<FiLogOut />} variant="ghost" colorScheme="red" onClick={onLogout}>
-          Sair do Sistema
-        </Button>
-      </VStack>
-    </Box>
-  )
-}
+import Sidebar from './components/Sidebar'
 
 // --- COMPONENTE CARD DE KPI (OS QUADRADINHOS) ---
 const KPICard = ({ label, value, help, isLoading }) => (
@@ -108,7 +68,7 @@ function Dashboard() {
   return (
     <Box bg="gray.50" minH="100vh">
       {/* 1. Menu Lateral */}
-      <Sidebar active="dashboard" onLogout={handleLogout} />
+      <Sidebar/>
 
       {/* 2. Conteúdo Principal (Empurrado 250px para a direita) */}
       <Box ml="250px" p={8}>
