@@ -32,7 +32,7 @@ function Clientes() {
   const fetchClientes = async () => {
     try {
       const token = localStorage.getItem('token')
-      const response = await axios.get('${import.meta.env.VITE_API_URL}/clientes', {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/clientes`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       setLista(response.data)
@@ -57,7 +57,7 @@ function Clientes() {
     setSaving(true)
     try {
         const token = localStorage.getItem('token')
-        await axios.post('${import.meta.env.VITE_API_URL}/clientes', novoCliente, {
+        await axios.post(`${import.meta.env.VITE_API_URL}/clientes`, novoCliente, {
             headers: { Authorization: `Bearer ${token}` }
         })
 

@@ -44,7 +44,7 @@ function Dashboard() {
       }
 
       // Chama o Backend Python
-      const response = await axios.get('${import.meta.env.VITE_API_URL}/dashboard/geral', {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/dashboard/geral`, {
         headers: { Authorization: `Bearer ${token}` } // Mostra o crachá
       })
 

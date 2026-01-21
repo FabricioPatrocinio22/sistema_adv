@@ -48,9 +48,9 @@ function Processos() {
     try {
       const token = localStorage.getItem('token')
       const headers = { Authorization: `Bearer ${token}` }
-      const resProc = await axios.get('${import.meta.env.VITE_API_URL}/processos', { headers })
+      const resProc = await axios.get(`${import.meta.env.VITE_API_URL}/processos`, { headers })
       setLista(resProc.data)
-      const resCli = await axios.get('${import.meta.env.VITE_API_URL}/clientes', { headers })
+      const resCli = await axios.get(`${import.meta.env.VITE_API_URL}/clientes`, { headers })
       setClientes(resCli.data)
     } catch (error) {
       console.log(error)
@@ -76,7 +76,7 @@ function Processos() {
     formData.append('arquivo', file)
 
     try {
-        const response = await axios.post('${import.meta.env.VITE_API_URL}/ia/extrair-dados', formData)
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/ia/extrair-dados`, formData)
         const dados = response.data
 
         setNovoProcesso({
@@ -101,7 +101,7 @@ function Processos() {
     try {
         const token = localStorage.getItem('token')
         const payload = { ...novoProcesso, status: 'Em Andamento' }
-        await axios.post('${import.meta.env.VITE_API_URL}/processos', payload, {
+        await axios.post(`${import.meta.env.VITE_API_URL}/processos`, payload, {
             headers: { Authorization: `Bearer ${token}` }
         })
         toast({ title: 'Processo criado!', status: 'success' })

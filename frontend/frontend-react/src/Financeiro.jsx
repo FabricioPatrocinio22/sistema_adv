@@ -37,7 +37,7 @@ function Financeiro() {
       const headers = { Authorization: `Bearer ${token}` }
       
       // Vamos assumir que existe essa rota no Python (se não tiver, criamos já já)
-      const response = await axios.get('${import.meta.env.VITE_API_URL}/pagamentos', { headers })
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/pagamentos`, { headers })
       
       setLista(response.data)
       calcularResumo(response.data)
@@ -90,7 +90,7 @@ function Financeiro() {
             valor: parseFloat(valorLimpo) // Converte pra número
         }
 
-        await axios.post('${import.meta.env.VITE_API_URL}/pagamentos', payload, {
+        await axios.post(`${import.meta.env.VITE_API_URL}/pagamentos`, payload, {
             headers: { Authorization: `Bearer ${token}` }
         })
 
