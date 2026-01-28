@@ -1,6 +1,6 @@
 # Sistema de Advocacia ⚖️
 
-Sistema completo de gerenciamento de processos jurídicos desenvolvido com FastAPI e Streamlit, incluindo IA para análise inteligente de documentos.
+Sistema completo de gerenciamento de processos jurídicos desenvolvido com **FastAPI** no backend e **React (Vite)** no frontend, incluindo IA para análise inteligente de documentos.
 
 ## ✨ Funcionalidades
 
@@ -51,8 +51,10 @@ Sistema completo de gerenciamento de processos jurídicos desenvolvido com FastA
 - **Python-dotenv** - Gerenciamento de variáveis de ambiente
 
 ### Frontend
-- **Streamlit** - Interface web interativa
-- **Requests** - Comunicação com API
+- **React + Vite** - SPA moderna e performática
+- **Chakra UI** - Biblioteca de componentes UI
+- **React Router** - Navegação entre páginas
+- **Axios** - Comunicação com a API
 
 ## 📦 Instalação
 
@@ -60,6 +62,7 @@ Sistema completo de gerenciamento de processos jurídicos desenvolvido com FastA
 ```bash
 git clone https://github.com/FabricioPatrocinio22/sistema_adv.git
 cd sistema_adv
+cd backend
 ```
 
 2. Crie um ambiente virtual:
@@ -98,29 +101,43 @@ A API estará disponível em `http://localhost:8000`
 - Documentação interativa: `http://localhost:8000/docs`
 - Documentação alternativa: `http://localhost:8000/redoc`
 
-### Frontend (Streamlit)
+### Frontend Web (React + Vite)
 
-Em outro terminal, execute:
+Em outro terminal, dentro da pasta do frontend, execute:
+
 ```bash
-streamlit run frontend.py
+cd frontend/frontend-react
+npm install
+npm run dev
 ```
 
-O frontend estará disponível em `http://localhost:8501`
+O frontend estará disponível em `http://localhost:5173`
+
+No arquivo `.env` do frontend (na pasta `frontend-react`), configure a URL da API:
+
+```bash
+VITE_API_URL=http://localhost:8000
+```
 
 ## 📁 Estrutura do Projeto
 
 ```
 sistema_advogado/
-├── main.py          # Backend FastAPI - Endpoints e lógica da API
-├── frontend.py      # Frontend Streamlit - Interface do usuário
-├── models.py        # Modelos de dados (Processo, Usuario)
-├── database.py      # Configuração do banco de dados
-├── security.py      # Autenticação, JWT e 2FA
-├── ia.py            # IA Jurídica - Análise de documentos
-├── requirements.txt # Dependências do projeto
-├── uploads/         # Pasta para arquivos PDF anexados
-├── .gitignore       # Arquivos ignorados pelo Git
-└── README.md        # Este arquivo
+├── backend/                   # Backend FastAPI
+│   ├── main.py                # Endpoints e lógica da API
+│   ├── frontend.py            # Interface antiga em Streamlit (opcional)
+│   ├── models.py              # Modelos de dados (Processo, Usuario)
+│   ├── database.py            # Configuração do banco de dados
+│   ├── security.py            # Autenticação, JWT e 2FA
+│   ├── ia.py                  # IA Jurídica - Análise de documentos
+│   ├── requirements.txt       # Dependências do backend
+│   └── uploads/               # Pasta para arquivos anexados
+├── frontend/                  # Frontend web
+│   └── frontend-react/        # Aplicação React + Vite
+│       ├── src/               # Código-fonte React
+│       ├── public/            # Arquivos estáticos
+│       └── package.json       # Dependências do frontend
+└── .gitignore                 # Arquivos ignorados pelo Git
 ```
 
 ## 🔌 Endpoints da API
@@ -154,9 +171,6 @@ Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 ```bash
 # Segurança
 SECRET_KEY=sua_chave_secreta_super_segura_aqui
-
-# Backend
-BACKEND_URL=${import.meta.env.VITE_API_URL}
 
 # AWS S3 (para armazenamento de arquivos na nuvem)
 AWS_ACCESS_KEY_ID=sua_access_key_aws
